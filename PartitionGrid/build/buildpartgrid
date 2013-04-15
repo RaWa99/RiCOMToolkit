@@ -1,0 +1,3 @@
+#!/bin/sh
+# build ModelHA - compile and link
+ifort -r8 ../src/*.f90 -o ../../bin/partgrid -L../lib -lmetis
