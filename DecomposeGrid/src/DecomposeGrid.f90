@@ -68,7 +68,7 @@
       real rvar(*)
 
 ! *** local variables
-      integer :: i,j,k,istat,ierr
+      integer :: i,j,k,istat,ierr,nn,ncn2,n1,n2,js
       integer nnp,nndf,npvx,ndfv,iopt,ndim
       logical ResOK, openbinfile
       CHARACTER FNAME*256, ans*1
@@ -124,6 +124,19 @@
         READ(22) (refdep(j),j=1,nsides),(slen(j),j=1,nsides)
         READ(22) (sdx(j),j=1,nsides),(sdy(j),j=1,nsides),(dlinv(j),j=1,nsides)
         READ(22,IOSTAT=istat) ((iends(k,j),k=1,2),j=1,nsides)
+! *** temporarily fill iends until put in PreMod
+        if(istat.ne.0) then
+          do nn=1,ne
+            ncn2 = ncn -1 + min0(1,nen(nn,ncn))
+            do j=1,ncn2
+              N1=NEN(nn,j)
+              N2=NEN(nn,mod(j,ncn2)+1)
+              js = numsideT(j,nn)
+              iends(1,js ) = n1
+              iends(2,js) = n2
+            enddo
+          enddo
+        endif
       else
         nsides = 0
       endif
@@ -736,6 +749,12 @@
           write(22) (sdxp(j),j=1,nstot),(sdyp(j),j=1,nstot),(dlinvp(j),j=1,nstot)
           write(22,IOSTAT=istat) ((iendsp(k,j),k=1,2),j=1,nstot)
         endif
+! *** write map information
+        write(22) nproc,jp
+        write(22) (elemapG2Lp(j),j=1,ne),(elemapL2G(j,jp),j=1,netot)
+        write(22) (nodemapG2L(j),j=1,ne),(nodemapL2G(j,jp),j=1,nptot)
+        write(22) (sidemapG2L(j),j=1,ne),(sidemapL2G(j,jp),j=1,nstot)
+
         CLOSE(unit=22)
 
 ! *** write base output
