@@ -95,7 +95,7 @@
       endif
 
 !      OPEN(UNIT=22,file=GridFileName,status='OLD',FORM='UNFORMATTED')      
-      READ (22) NE,NTYPE,NP,NPR,NCN,nsides,nnbr,izup,ifront,maxrow,maxsto
+      READ (22) NE,NTYPE,NP,NPR,NCN,nsides,nnbr,izup,ifront
 
 !  Main arrays for grid
       ALLOCATE (nen(ne,ncn),xyz(np,3),area(ne),nbc(np),alfa(np), &
@@ -156,7 +156,7 @@
           READ(2) TET,nnp,nndf,npvx,ndfv,iopt
         END IF
  
-        ndim = max(nsides,ne+nsidesbc)
+        ndim = max(nsides,ne)
         npv = npvx
         allocate ( eta(0:ndim),un(npv,nsides),ut(npv,nsides),ut1(npv,nsides),&
                    ut2(npv,nsides), STAT = istat )
@@ -590,7 +590,7 @@
 
 ! *** local variables
       integer j,jp,k,istat
-      integer nG,eG,ncn2
+      integer nG,eG,sG,ncn2
       integer nepmax,nppmax,nspmax,netot,nptot,nstot
       integer, allocatable :: nenp(:,:),ieadjp(:,:),numsideTp(:,:),IECodep(:),nbcp(:)
       integer, allocatable :: isidep(:,:),iendsp(:,:)
@@ -602,7 +602,7 @@
 !  allocate arrays for grid partition
         nepmax = maxval(nep) + maxval(nehalo)
         nppmax = maxval(npp) + maxval(nphalo)
-        ALLOCATE (nodemapG2L(np),sidemapG2L(nsides),&
+        ALLOCATE (elemapG2Lp(ne),nodemapG2L(np),sidemapG2L(nsides),&
           nenp(nepmax,4),xyzp(nppmax,3),areap(nepmax),nbcp(nppmax),alfap(nppmax), &
           ieadjp(5,nepmax),numsideTp(4,nepmax),IECodep(nepmax), STAT = istat )
 
@@ -610,29 +610,40 @@
           write(*,*) 'FATAL ERROR: Cannot allocate main output arrays'
           call exit(71)
         endif
+        
+        if(nsides.gt.0) then
+          nspmax = maxval(nsp) + maxval(nshalo)
+          ALLOCATE (sdepp(0:nspmax),slenp(nspmax),refdepp(nspmax),sdxp(nspmax),sdyp(nspmax), &
+            sxyp(2,nspmax),dlinvp(nspmax),isidep(3,nspmax),iendsp(2,nspmax), STAT = istat )
+          if(istat.ne.0) then
+            write(*,*) 'FATAL ERROR: Cannot allocate side-based storage arrays',istat
+            call exit(71)
+          endif
+        endif
 
 ! *** form local domain arrays and write out      
 
       do jp=1,nproc
       
         if(jp.eq.2) numpe(6:6)='1'
-        
-        
-!        OPEN(UNIT=22,file='GridFile'//numpe,status='unknown',FORM='UNFORMATTED')      
-!        write(22) nep(j),nehalo(j),npp(j),nphalo(j),NCN,nsp(j),nshalo(j),izup,ifront
-       
+                
         netot = nep(jp) + nehalo(jp)
         nptot = npp(jp) + nphalo(jp)
+        nstot = nsp(jp) + nshalo(jp)
 
         ! form local mappings
+        elemapG2Lp = 0
+        do j=1,netot
+          nG = elemapL2G(j,jp)
+          elemapG2Lp(nG) = j
+        enddo
         nodemapG2L = 0
         do j=1,nptot
           nG = nodemapL2G(j,jp)
           nodemapG2L(nG) = j
         enddo
-        
         sidemapG2L = 0        
-        do j=1,nsp(jp)
+        do j=1,nstot
           nG = sidemapL2G(j,jp)
           sidemapG2L(nG) = j
         enddo
@@ -640,13 +651,21 @@
         ! form local arrays for output
         nenp = 0
         iecodep = 1
+        ieadjp = 0
+        numsideTp = 0
         do j=1,netot
           eG = elemapL2G(j,jp)
+          areap(j) = area(eG)
           iecodep(j) = iecode(eG)
+          ieadjp(1,j) = j
           ncn2 = ncn -1 + min0(1,nen(eG,ncn))
           do k=1,ncn2
             nG = nen(eG,k)
             nenp(j,k) = nodemapG2L(nG)
+            nG = ieadj(k+1,eG)
+            if(nG.gt.0) ieadjp(k+1,j) = elemapG2Lp(nG)
+            nG = numsideT(k,eG)
+            numsideTp(k,j) = sidemapG2L(nG)
           enddo
         enddo
         
@@ -673,39 +692,77 @@
         enddo
         close(22)
         
-        cycle
-
-!        write(22) ((NENp(J,K),K=1,NCN),J=1,netot),(IECodep(j),J=1,netot), &
-!              ((XYZp(J,K),J=1,NPtot),K=1,3),(ALFAp(j),J=1,NPtot),(NBCp(J),J=1,NPtot)
+        OPEN(UNIT=22,file='gridfile'//numpe//'.bin',status='unknown',FORM='UNFORMATTED')      
+        write(22) netot,nehalo(jp),nptot,nphalo(jp),NCN,nstot,nshalo(jp),izup,ifront
+       
+        write(22) ((NENp(J,K),K=1,NCN),J=1,netot),(IECodep(j),J=1,netot), &
+              ((XYZp(J,K),J=1,NPtot),K=1,3),(ALFAp(j),J=1,NPtot),(NBCp(J),J=1,NPtot)
       
         if(nsides.gt.0) then
 !  Side-based arrays
-        
-          do j=1,nsp(j)
-            nG = sidemapL2G(j,jp)
-          enddo
-          
-          nspmax = maxval(nsp) + maxval(nshalo)
-          ALLOCATE (sdepp(0:nsides),slenp(nsides),refdepp(nsides),sdxp(nsides),sdyp(nsides), &
-            sxy(2,nsides),dlinv(nsides),iside(3,nsides),iends(2,nsides), STAT = istat )
-          if(istat.ne.0) then
-            write(*,*) 'FATAL ERROR: Cannot allocate side-based storage arrays'
-            call exit(71)
-          endif
-
+                         
           ! form local arrays
-          do j=1,nsp(j)
+          isidep = 0
+          sdepp(0)=sdep(0)
+          do j=1,nstot  !p(jp)
+            sG = sidemapL2G(j,jp)
+            sdepp(j)=sdep(sG)
+            slenp(j)=slen(sG)
+            refdepp(j)=refdep(sG)
+            sdxp(j)=sdx(sG)
+            sdyp(j)=sdy(sG)
+            dlinvp(j)=dlinv(sG)
+            sxyp(1:2,j)=sxy(1:2,sG)
+            do k=1,2
+              nG = iside(k,sG)
+              if(nG.gt.0) isidep(k,j)=elemapG2Lp(nG)
+              nG = iends(k,sG)
+              iendsp(k,j)=nodemapG2L(nG)
+            enddo
+            isidep(3,j)=iside(3,sG)
+          enddo
+          ! resort isides for halo
+          do j=nsp(jp)+1,nstot
+            if(isidep(1,j).eq.0) then
+              isidep(1,j) = isidep(2,j)
+              isidep(2,j) = 0
+            endif
           enddo
         
           ! write it out
-          nstot = nsp(j) + nshalo(j)
           write(22) (areap(j),j=1,netot),((ieadjp(k,j),k=1,5),j=1,netot),((numsideTp(k,j),j=1,netot),k=1,4) 
           write(22) ((isidep(k,j),k=1,2),j=1,nstot),((sxyp(k,j),k=1,2),j=1,nstot)
           write(22) (refdepp(j),j=1,nstot),(slenp(j),j=1,nstot)
           write(22) (sdxp(j),j=1,nstot),(sdyp(j),j=1,nstot),(dlinvp(j),j=1,nstot)
           write(22,IOSTAT=istat) ((iendsp(k,j),k=1,2),j=1,nstot)
-          endif
-          CLOSE(unit=22)
+        endif
+        CLOSE(unit=22)
+
+! *** write base output
+        OPEN(UNIT=22,file='baseout'//numpe//'.dat',status='unknown')      
+        write(22,*) 'netot,nehalo(jp),nptot,nphalo(jp),NCN,nstot,nshalo(jp),izup,ifront'
+        write(22,*) netot,nehalo(jp),nptot,nphalo(jp),NCN,nstot,nshalo(jp),izup,ifront
+        write(22,*) 'elements j,nen(j,1:ncn),iecode(j)'
+        do j=1,netot
+          write(22,'(10i6)') j,(nenp(j,k),k=1,4),iecodep(j)
+        enddo
+        write(22,*) 'elements j,area,ieadj(1:5,j),numside(1:4,j)'
+        do j=1,netot
+          write(22,'(i6,e12.4,10i6)') j,areap(j),(ieadjp(k,j),k=1,5),(numsideTp(k,j),k=1,4)
+        enddo
+        write(22,*) 'nodes j,xyz(j,1:3),alfa(j)'
+        do j=1,nptot
+          write(22,'(i6,4e12.4)') j,(xyzp(j,k),k=1,3),alfap(j)
+        enddo
+        write(22,*) 'sides j,iside(1:3,j),iends(1:2,j)'
+        do j=1,nstot
+          write(22,'(10i6)') j,(isidep(k,j),k=1,3),(iendsp(k,j),k=1,2)
+        enddo
+        write(22,*) 'sides j,iside(1:3,j),iends(1:2,j)'
+        do j=1,nstot
+          write(22,'(i6,8e12.4)') j,(sxyp(k,j),k=1,2),refdepp(j),slenp(j),sdxp(j),sdyp(j),dlinvp(j)
+        enddo
+        close(22)
       enddo
 
       RETURN

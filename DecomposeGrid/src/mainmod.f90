@@ -9,30 +9,27 @@
 
 ! Scalar data
       integer nproc
-      integer  NE,NP,NPR,NDF,NCN,ntype,ntypes,ntypec,ndfe2,nsides,nsidesbc
-      integer  ICVG,IDX,NPRT,itest,nitn,ncon,nsed,jsed,nsol,nnbr,nbx,npMB,neMB
-      integer  npv, npvc,izcoord,izgrid
-      integer  NOPT,NEQS,idpdn,isolve,NSon,iqp,nsbc,irst,irstout,nrstout,icase,nitsol,NMit
-      integer iwind, iwindx,iAnalysisTime,neqtide
-      integer icoord,izup,ifront,maxrow,maxsto,ielmSR
+      integer  NE,NP,NPR,NCN,ntype,nsides,npv
+      integer  nnbr
+      integer  irst
+      integer iwind, iwindx,iAnalysisTime
+      integer izup,ifront
       real TET
 ! 1D data
       integer, allocatable ::  nep(:), nehalo(:), npp(:), nphalo(:), nsp(:), nshalo(:)
-      integer, allocatable ::  nbc(:),IndexQ(:), IECode(:),numsideeq(:)
+      integer, allocatable ::  nbc(:), IECode(:)
       integer, allocatable ::  epart(:), npart(:)
       real, allocatable ::  Area(:), alfa(:)
       real, allocatable ::  sdep(:),slen(:),refdep(:),sdx(:),sdy(:)
       real, allocatable ::  dlinv(:)
-      real, allocatable ::  z(:),zdep(:),zdepC(:)
-      real, allocatable ::  eta(:), qp(:) 
+      real, allocatable ::  eta(:)
 
 ! 2D data
       integer, allocatable ::  nen(:,:), ieadj(:,:)
-      integer, allocatable ::  numsideT(:,:), iside(:,:), isidebc(:,:),iends(:,:) !numside(:,:),
-      integer, allocatable ::  elemapG2L(:,:), nodemapG2L(:), sidemapG2L(:)
+      integer, allocatable ::  numsideT(:,:), iside(:,:),iends(:,:) !numside(:,:),
+      integer, allocatable ::  elemapG2L(:,:),elemapG2Lp(:), nodemapG2L(:), sidemapG2L(:)
       integer, allocatable ::  elemapL2G(:,:), nodemapL2G(:,:), sidemapL2G(:,:)
-      real, allocatable ::  ampl(:,:),phase(:,:)
-      real, allocatable ::  sxy(:,:), xyz(:,:), FRC(:,:)
+      real, allocatable ::  sxy(:,:), xyz(:,:)
       real, allocatable ::  un(:,:), ut(:,:), wn(:,:), ut1(:,:), ut2(:,:) !AB3 Coriolis
 
 ! Character data
