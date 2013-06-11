@@ -211,7 +211,6 @@
       integer j, k, istat
       integer etype, numflag, edgecut
       integer, allocatable ::  eptr(:), eind(:), vwgt(:), vsize(:) 
-!      integer, allocatable :: epart(:), npart(:)
       real, allocatable :: tpwgts(:)
       logical ResOK, openfile
       CHARACTER FNAME*256, ans*1
@@ -227,7 +226,14 @@
 !  call metis routines - v4
       
         numflag = 1
-        etype = 1
+        if(ncn.eq.4) then
+          etype = 4
+        elseif(ncn.eq.3) then
+          etype = 1
+        else
+          write(*,*) ' Invalid value for ncn ',ncn
+          stop
+        endif
 
         ALLOCATE (eind(4*ne),epart(ne),npart(np), STAT = istat )
         if(istat.ne.0) then
@@ -241,8 +247,13 @@
           enddo
         enddo
 
-        call metis_partmeshdual(ne,np,eind,etype,numflag,nproc,&
+        if(nproc.gt.1) then
+          call metis_partmeshdual(ne,np,eind,etype,numflag,nproc,&
                               edgecut,epart,npart)
+        else
+          epart = 1
+          npart = 1
+        endif
 
                               
 !  call metis routines - v5
@@ -302,13 +313,14 @@
       implicit none
 
 ! *** local variables
-      integer j,j2,jp,k,kk,istat,ncn2,nn,ep,nepmax,neh
+      integer j,j2,jp,k,kk,istat,ncn2,nn,ep,nepmax,neh,nehmax
       integer nspmax,mr,mr2,ns,nppmax,eG
+      integer, allocatable :: ncnt(:), ncntint(:)
       logical found
 
 ! *** determine size of partition arrays and form local to global map
 
-      ALLOCATE (nep(nproc),nehalo(nproc),npp(nproc),nphalo(nproc),&
+      ALLOCATE (nep(nproc),nehalo(nproc),ncnt(nproc),npp(nproc),nphalo(nproc),&
                 nsp(nproc),nshalo(nproc),elemapG2L(2,ne), STAT = istat )
       if(istat.ne.0) then
         write(*,*) 'FATAL ERROR: Cannot allocate decompose arrays'
@@ -348,44 +360,75 @@
       
       write(*,*) ' nep=',(nep(j),j=1,nproc)
       write(*,*) ' nehalo=',(nehalo(j),j=1,nproc)
-      
+
 ! *** form local to global map for elements
 
       nepmax = maxval(nep) + maxval(nehalo)
-      ALLOCATE (elemapL2G(nepmax,nproc), STAT = istat )
+      nehmax = nproc*maxval(nehalo)
+      ALLOCATE (elemapL2G(nepmax,nproc),ncntint(nproc),halomap(6,nehmax), STAT = istat )
       if(istat.ne.0) then
         write(*,*) 'FATAL ERROR: Cannot allocate L2G map array'
         call exit(71)
       endif
       
       elemapL2G = 0
-      nehalo = 0
+      ncnt = 0
+      ncntint = 0
       
       do j=1,ne
         ep = elemapG2L(1,j)
-        nn = elemapG2L(2,j)
-        elemapL2G(nn,ep) = j
-        ! add halo elements
         nn = nep(ep)
         ncn2 = ncn -1 + min0(1,nen(j,ncn))
+        found = .false.
+        ! add halo elements
         do k=1,ncn2
-!          mr = numsideT(k,j)
           j2 = ieadj(k+1,j)
           if(j2.gt.0) then
-!            write(*,*) ' j,k,mr,j2,p1,p2',j,k,mr,j2,epart(j),epart(j2)
-            if(epart(j).ne.epart(j2)) then
-              neh = nehalo(ep) + 1
-              elemapL2G(nn+neh,ep) = j2
-              nehalo(ep) = neh
+!            write(*,*) ' j,k,mr,j2,p1,p2',j,k,j2,epart(j),epart(j2)
+            if(epart(j).ne.epart(j2)) then !halo pairs
+              ncnt(ep) = ncnt(ep) + 1
+              neh = nn - nehalo(ep) + ncnt(ep)
+              elemapL2G(neh,ep) = j    !interior halo element
+              elemapG2L(2,j) = neh
+              neh = nn+ncnt(ep)
+              elemapL2G(neh,ep) = j2   !halo element
+              found = .true.
             endif
           endif
         enddo
+        if(.not.found) then  !interior element
+          nn = ncntint(ep) + 1
+          elemapL2G(nn,ep) = j
+          elemapG2L(2,j) = nn
+          ncntint(ep) = nn
+        endif
       enddo
-      
-      write(*,*) ' nep=',(nep(j),j=1,nproc)
-      write(*,*) ' nehalo=',(nehalo(j),j=1,nproc)
+
+! *** construct halo map for communication
+      neh = 0
+      do jp=1,nproc
+        do k=nep(jp)+1,nep(jp)+nehalo(jp)
+          nn = elemapL2G(k,jp)
+          j2 = epart(nn)
+          neh = neh + 1
+          halomap(1,neh) = jp
+          halomap(2,neh) = k - nehalo(jp)   !send interior halo element
+          halomap(3,neh) = k  !receive exterior halo element
+          halomap(4,neh) = j2
+          kk = elemapG2L(2,nn)
+          halomap(5,neh) = kk   !send interior halo element in j2
+          halomap(6,neh) = kk + nehalo(j2)   !receive exterior halo element in j2
+       enddo
+      enddo
+      nehmax = neh
+      numhalo = neh
 
       !debug
+      write(99,*) ' global 2 local element data=ne,npart,nn'
+      do j=1,ne
+        write(99,'(10i5)') j,elemapG2L(1,j),elemapG2L(2,j)
+      enddo      
+      
       write(99,*) ' local element data= npart,j,mapL2G'
       do jp=1,nproc
         write(99,*) ' jp, nep, nehalo=',nep(jp),nehalo(jp)
@@ -393,6 +436,10 @@
           write(99,'(10i5)') jp,j,elemapL2G(j,jp)
         enddo
       enddo
+      do j=1,nehmax
+        write(99,'(10i5)') (halomap(k,j),k=1,6)
+      enddo
+      
 
       
 ! *** form local to global map for sides
@@ -602,7 +649,7 @@
       implicit none
 
 ! *** local variables
-      integer j,jp,k,istat
+      integer j,jp,k,istat,myproc
       integer nG,eG,sG,ncn2
       integer nepmax,nppmax,nspmax,netot,nptot,nstot
       integer, allocatable :: nenp(:,:),ieadjp(:,:),numsideTp(:,:),IECodep(:),nbcp(:)
@@ -610,7 +657,7 @@
       real, allocatable :: xyzp(:,:),alfap(:)
       real, allocatable ::  Areap(:),sdepp(:),slenp(:),refdepp(:),sdxp(:),sdyp(:)
       real, allocatable ::  sxyp(:,:), dlinvp(:)
-      character*6 :: numpe='PE0000'
+      character*6 :: PEnum, PEpath='PE0000'
 
 !  allocate arrays for grid partition
         nepmax = maxval(nep) + maxval(nehalo)
@@ -638,8 +685,24 @@
 
       do jp=1,nproc
       
-        if(jp.eq.2) numpe(6:6)='1'
-                
+        myproc = jp-1
+        if(myproc.lt.10) then
+          write(PEnum,'(I1)') myproc
+          PEpath(6:6) = PEnum(1:1)
+        elseif(myproc.lt.100) then
+          write(PEnum,'(I2)') myproc
+          PEpath(5:6) = PEnum(1:2)
+        elseif(myproc.lt.1000) then
+          write(PEnum,'(I3)') myproc
+          PEpath(4:6) = PEnum(1:3)
+        elseif(myproc.lt.10000) then
+          write(PEnum,'(I4)') myproc
+          PEpath(3:6) = PEnum(1:4)
+        else
+          write(*,*) ' Fatal error: too many procs'
+          stop
+        endif
+        
         netot = nep(jp) + nehalo(jp)
         nptot = npp(jp) + nphalo(jp)
         nstot = nsp(jp) + nshalo(jp)
@@ -693,7 +756,8 @@
         enddo
         
 ! *** write it out
-        OPEN(UNIT=22,file='GridFile'//numpe//'.xye',status='unknown')      
+        call system('mkdir '//PEpath)
+        OPEN(UNIT=22,file=PEpath//'/GridFile.xye',status='unknown')      
         
         write(22,'(a)') '#XYE'
         write(22,*) nptot,netot
@@ -705,7 +769,7 @@
         enddo
         close(22)
         
-        OPEN(UNIT=22,file='gridfile'//numpe//'.bin',status='unknown',FORM='UNFORMATTED')      
+        OPEN(UNIT=22,file=PEpath//'/gridfile.bin',status='unknown',FORM='UNFORMATTED')      
         write(22) netot,nehalo(jp),nptot,nphalo(jp),NCN,nstot,nshalo(jp),izup,ifront
        
         write(22) ((NENp(J,K),K=1,NCN),J=1,netot),(IECodep(j),J=1,netot), &
@@ -750,15 +814,15 @@
           write(22,IOSTAT=istat) ((iendsp(k,j),k=1,2),j=1,nstot)
         endif
 ! *** write map information
-        write(22) nproc,jp
+        write(22) nproc,jp,ne,np,nsides,numhalo
         write(22) (elemapG2Lp(j),j=1,ne),(elemapL2G(j,jp),j=1,netot)
-        write(22) (nodemapG2L(j),j=1,ne),(nodemapL2G(j,jp),j=1,nptot)
-        write(22) (sidemapG2L(j),j=1,ne),(sidemapL2G(j,jp),j=1,nstot)
-
+        write(22) (nodemapG2L(j),j=1,np),(nodemapL2G(j,jp),j=1,nptot)
+        write(22) (sidemapG2L(j),j=1,nsides),(sidemapL2G(j,jp),j=1,nstot)
+        write(22) ((halomap(j,k),j=1,6),k=1,numhalo)
         CLOSE(unit=22)
 
 ! *** write base output
-        OPEN(UNIT=22,file='baseout'//numpe//'.dat',status='unknown')      
+        OPEN(UNIT=22,file='baseout'//PEpath//'.dat',status='unknown')      
         write(22,*) 'netot,nehalo(jp),nptot,nphalo(jp),NCN,nstot,nshalo(jp),izup,ifront'
         write(22,*) netot,nehalo(jp),nptot,nphalo(jp),NCN,nstot,nshalo(jp),izup,ifront
         write(22,*) 'elements j,nen(j,1:ncn),iecode(j)'

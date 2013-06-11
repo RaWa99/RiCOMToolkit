@@ -10,7 +10,7 @@
 ! Scalar data
       integer nproc
       integer  NE,NP,NPR,NCN,ntype,nsides,npv
-      integer  nnbr
+      integer  nnbr, numhalo
       integer  irst
       integer iwind, iwindx,iAnalysisTime
       integer izup,ifront
@@ -18,7 +18,7 @@
 ! 1D data
       integer, allocatable ::  nep(:), nehalo(:), npp(:), nphalo(:), nsp(:), nshalo(:)
       integer, allocatable ::  nbc(:), IECode(:)
-      integer, allocatable ::  epart(:), npart(:)
+      integer, allocatable ::  epart(:), npart(:),halomap(:,:)
       real, allocatable ::  Area(:), alfa(:)
       real, allocatable ::  sdep(:),slen(:),refdep(:),sdx(:),sdy(:)
       real, allocatable ::  dlinv(:)
