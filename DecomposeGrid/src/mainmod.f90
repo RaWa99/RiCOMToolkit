@@ -8,7 +8,7 @@
 ! Parameters
 
 ! Scalar data
-      integer nproc
+      integer nproc, numcomm
       integer  NE,NP,NPR,NCN,ntype,nsides,npv
       integer  nnbr, numhalo
       integer  irst
@@ -17,7 +17,7 @@
       real TET
 ! 1D data
       integer, allocatable ::  nep(:), nehalo(:), npp(:), nphalo(:), nsp(:), nshalo(:)
-      integer, allocatable ::  nbc(:), IECode(:)
+      integer, allocatable ::  nbc(:), IECode(:), inehalo(:), ncomm(:)
       integer, allocatable ::  epart(:), npart(:),halomap(:,:)
       real, allocatable ::  Area(:), alfa(:)
       real, allocatable ::  sdep(:),slen(:),refdep(:),sdx(:),sdy(:)
@@ -27,10 +27,17 @@
 ! 2D data
       integer, allocatable ::  nen(:,:), ieadj(:,:)
       integer, allocatable ::  numsideT(:,:), iside(:,:),iends(:,:) !numside(:,:),
-      integer, allocatable ::  elemapG2L(:,:),elemapG2Lp(:), nodemapG2L(:), sidemapG2L(:)
-      integer, allocatable ::  elemapL2G(:,:), nodemapL2G(:,:), sidemapL2G(:,:)
+      integer, allocatable ::  elemapG2L(:,:), nodemapG2L(:,:), sidemapG2L(:,:)
+      integer, allocatable ::  elemapL2G(:,:), nodemapL2G(:,:),sidemapL2G(:,:)
+      integer, allocatable ::  icomm(:,:), ecomm(:,:), commid(:,:)
+      integer, allocatable ::  ine(:,:), ene(:,:),ins(:,:), ens(:,:)
       real, allocatable ::  sxy(:,:), xyz(:,:)
       real, allocatable ::  un(:,:), ut(:,:), wn(:,:), ut1(:,:), ut2(:,:) !AB3 Coriolis
+
+! 3D data
+      integer, allocatable ::  ipoly(:,:,:), epoly(:,:,:)
+      integer, allocatable ::  iedge(:,:,:), eedge(:,:,:)
+
 
 ! Character data
       character*80 OutResFile

@@ -146,8 +146,9 @@
       write(6,*) ' np,nsides,nnbr=',np,nsides,nnbr
 
 ! *** restart file
-      write(*,*) ' Decompose restart file? (Y/N)'
-      READ(*,'(a)') ans
+!      write(*,*) ' Decompose restart file? (Y/N)'
+!      READ(*,'(a)') ans
+      ans(1:1) = 'N'
       
       if(ans(1:1).eq.'Y'.or.ans(1:1).eq.'y') then
 
@@ -313,15 +314,16 @@
       implicit none
 
 ! *** local variables
-      integer j,j2,jp,k,kk,istat,ncn2,nn,ep,nepmax,neh,nehmax
+      integer j,j2,jp,jp2,k,kk,istat,ncn2,nn,ep,nepmax,neh,nehmax
       integer nspmax,mr,mr2,ns,nppmax,eG
-      integer, allocatable :: ncnt(:), ncntint(:)
+      integer, allocatable :: ncnt(:)
       logical found
 
 ! *** determine size of partition arrays and form local to global map
 
       ALLOCATE (nep(nproc),nehalo(nproc),ncnt(nproc),npp(nproc),nphalo(nproc),&
-                nsp(nproc),nshalo(nproc),elemapG2L(2,ne), STAT = istat )
+                nsp(nproc),nshalo(nproc),commid(nproc,nproc),&
+                elemapG2L(2,ne),nodemapG2L(2,np), STAT = istat )
       if(istat.ne.0) then
         write(*,*) 'FATAL ERROR: Cannot allocate decompose arrays'
         call exit(71)
@@ -338,16 +340,16 @@
       nehalo = 0
       elemapG2L = 0
       
+! *** first find problem size and set G2L mapping
+
       do j=1,ne
         nn = nep(epart(j)) + 1
         elemapG2L(1,j) = epart(j)
         elemapG2L(2,j) = nn
-!        elemapL2G(nn,epart(j)) = j
         nep(epart(j)) = nn
         !  count halo elements
         ncn2 = ncn -1 + min0(1,nen(j,ncn))
         do k=1,ncn2
-!          mr = numsideT(k,j)
           j2 = ieadj(k+1,j)
           if(j2.gt.0) then
 !            write(*,*) ' j,k,mr,j2,p1,p2',j,k,mr,j2,epart(j),epart(j2)
@@ -365,7 +367,7 @@
 
       nepmax = maxval(nep) + maxval(nehalo)
       nehmax = nproc*maxval(nehalo)
-      ALLOCATE (elemapL2G(nepmax,nproc),ncntint(nproc),halomap(6,nehmax), STAT = istat )
+      ALLOCATE (elemapL2G(nepmax,nproc),halomap(6,nehmax), STAT = istat )
       if(istat.ne.0) then
         write(*,*) 'FATAL ERROR: Cannot allocate L2G map array'
         call exit(71)
@@ -373,55 +375,68 @@
       
       elemapL2G = 0
       ncnt = 0
-      ncntint = 0
+      commid = 0
       
       do j=1,ne
         ep = elemapG2L(1,j)
-        nn = nep(ep)
+        nn = elemapG2L(2,j)
+        elemapL2G(nn,ep) = j  !interior element
         ncn2 = ncn -1 + min0(1,nen(j,ncn))
-        found = .false.
         ! add halo elements
+        kk = 0
         do k=1,ncn2
           j2 = ieadj(k+1,j)
           if(j2.gt.0) then
 !            write(*,*) ' j,k,mr,j2,p1,p2',j,k,j2,epart(j),epart(j2)
             if(epart(j).ne.epart(j2)) then !halo pairs
+              commid(epart(j),epart(j2))=1
               ncnt(ep) = ncnt(ep) + 1
-              neh = nn - nehalo(ep) + ncnt(ep)
-              elemapL2G(neh,ep) = j    !interior halo element
-              elemapG2L(2,j) = neh
-              neh = nn+ncnt(ep)
-              elemapL2G(neh,ep) = j2   !halo element
-              found = .true.
+              neh = nep(ep)+ncnt(ep)
+              elemapL2G(neh,ep) = j2   !exterior halo element
             endif
           endif
         enddo
-        if(.not.found) then  !interior element
-          nn = ncntint(ep) + 1
-          elemapL2G(nn,ep) = j
-          elemapG2L(2,j) = nn
-          ncntint(ep) = nn
-        endif
       enddo
 
-! *** construct halo map for communication
-      neh = 0
+      write(99,*) ' halo element data before dup'
       do jp=1,nproc
-        do k=nep(jp)+1,nep(jp)+nehalo(jp)
-          nn = elemapL2G(k,jp)
-          j2 = epart(nn)
-          neh = neh + 1
-          halomap(1,neh) = jp
-          halomap(2,neh) = k - nehalo(jp)   !send interior halo element
-          halomap(3,neh) = k  !receive exterior halo element
-          halomap(4,neh) = j2
-          kk = elemapG2L(2,nn)
-          halomap(5,neh) = kk   !send interior halo element in j2
-          halomap(6,neh) = kk + nehalo(j2)   !receive exterior halo element in j2
-       enddo
+        write(99,*) ' jp, nep, nehalo=',jp, nep(jp),nehalo(jp)
+        write(99,'(10i5)') (elemapL2G(j,jp),j=nep(jp)+1,nep(jp)+nehalo(jp))
       enddo
-      nehmax = neh
-      numhalo = neh
+      
+! *** eliminate duplicate external halo elements
+      do jp=1,nproc
+        if(nehalo(jp).le.1) cycle
+        neh = 1
+        do k=2,nehalo(jp)
+          nn = nep(jp) + k
+          j = elemapL2G(nn,jp)
+          found = .false.
+          do kk=1,neh
+            nn = nep(jp) + kk
+            j2 = elemapL2G(nn,jp)
+            if(j.eq.j2) then
+              found = .true.
+              exit
+            endif
+          enddo
+          if(.not.found) then
+            neh = neh + 1
+            nn = nep(jp) + neh
+            elemapL2G(nn,jp) = j
+          endif
+        enddo
+        nehalo(jp) = neh
+      enddo
+
+!      write(99,*) ' halo element data after dup'
+!      do jp=1,nproc
+!        write(99,*) ' jp, nep, nehalo=',jp, nep(jp),nehalo(jp)
+!        write(99,'(10i5)') (elemapL2G(j,jp),j=nep(jp)+1,nep(jp)+nehalo(jp))
+!      enddo
+
+      write(*,*) ' nep=',(nep(j),j=1,nproc)
+      write(*,*) ' nehalo=',(nehalo(j),j=1,nproc)
 
       !debug
       write(99,*) ' global 2 local element data=ne,npart,nn'
@@ -436,16 +451,13 @@
           write(99,'(10i5)') jp,j,elemapL2G(j,jp)
         enddo
       enddo
-      do j=1,nehmax
-        write(99,'(10i5)') (halomap(k,j),k=1,6)
-      enddo
       
 
       
 ! *** form local to global map for sides
 
       nspmax = 4*(maxval(nep) + maxval(nehalo))
-      ALLOCATE (sidemapL2G(nspmax,nproc), STAT = istat )
+      ALLOCATE (sidemapL2G(nspmax,nproc),sidemapG2L(nproc,nsides), STAT = istat )
       if(istat.ne.0) then
         write(*,*) 'FATAL ERROR: Cannot allocate L2G map array'
         call exit(71)
@@ -454,6 +466,7 @@
       nsp = 0
       nshalo = 0
       sidemapL2G = 0
+      sidemapG2L = 0
       
       do j=1,ne
         ep = epart(j)
@@ -461,8 +474,9 @@
         ncn2 = ncn -1 + min0(1,nen(j,ncn))
         do k=1,ncn2
           mr = numsideT(k,j)
-          sidemapL2G(ns+1,ep) = mr
           ns = ns + 1
+          sidemapL2G(ns,ep) = mr
+!          sidemapG2L(ep,mr) = ns
 !          write(*,*) ' ns,ep,sidemapL2G=',ns,ep,sidemapL2G(ns,ep) 
         enddo
         nsp(ep) = ns
@@ -489,6 +503,7 @@
           if(.not.found) then
             ns = ns + 1
             sidemapL2G(ns,jp) = mr
+            sidemapG2L(jp,mr) = ns
  !           write(*,*) ' jp,k,kk,mr,mr2,ns=',jp,k,kk,mr,mr2,ns
           endif
         enddo
@@ -496,11 +511,12 @@
         ! add sides for halo
         do j=nep(jp)+1,nep(jp)+nehalo(jp)
           eG = elemapL2G(j,jp)
+          jp2 = epart(eG)
           ncn2 = ncn -1 + min0(1,nen(eG,ncn))
           do k=1,ncn2
             mr = numsideT(k,eG)
-            sidemapL2G(ns+1,jp) = mr
             ns = ns + 1
+            sidemapL2G(ns,jp) = mr
 !            write(*,*) ' add ns,ep,sidemapL2G=',ns,jp,sidemapL2G(ns,jp) 
           enddo
         enddo
@@ -520,6 +536,8 @@
           if(.not.found) then
             ns = ns + 1
             sidemapL2G(ns,jp) = mr
+!            sidemapG2L(jp,mr) = ns
+!            sidemapEP(ns,jp) = sidemapEP(k,jp)
  !           write(*,*) ' jp,k,kk,mr,mr2,ns=',jp,k,kk,mr,mr2,ns
           endif
         enddo
@@ -620,7 +638,197 @@
       
       write(*,*) ' npp=',(npp(j),j=1,nproc)
       write(*,*) ' nphalo=',(nphalo(j),j=1,nproc)
+      
+! *** construct communication structure
+      call GenerateEleCommMap()
 
+      RETURN
+      END
+
+!*****************************************************************
+!*****************************************************************
+
+      Subroutine GenerateEleCommMap()
+
+      USE MainData
+      
+      implicit none
+
+! *** local variables
+      integer :: j,j2,jp,jp2,istat,ncomm_max,maxpoly,maxedge
+      integer :: eG,eG2,n1,n2,k,kk,ncn2,nG,nG2
+      logical :: found
+      
+      ALLOCATE (ncomm(nproc), STAT = istat )
+      if(istat.ne.0) then
+        write(*,*) 'FATAL ERROR: Cannot allocate ncomm array'
+        call exit(71)
+      endif
+
+      ncomm = sum(commid,2)
+      ncomm_max = maxval(ncomm(1:nproc))
+      write(*,*) ' ncomm= ',(ncomm(jp),jp=1,nproc)
+      
+! *** now the dirty work
+      ALLOCATE (icomm(ncomm_max,nproc),ecomm(ncomm_max,nproc), STAT = istat )
+      if(istat.ne.0) then
+        write(*,*) 'FATAL ERROR: Cannot allocate icomm,ecomm arrays'
+        call exit(71)
+      endif
+      
+      maxpoly = maxval(nehalo)
+      maxedge = maxval(nshalo)
+      ALLOCATE (ine(ncomm_max,nproc),ene(ncomm_max,nproc),&
+                ins(ncomm_max,nproc),ens(ncomm_max,nproc),&
+                ipoly(maxpoly,ncomm_max,nproc),epoly(maxpoly,ncomm_max,nproc), &
+                iedge(maxedge,ncomm_max,nproc),eedge(maxedge,ncomm_max,nproc), STAT = istat )
+      if(istat.ne.0) then
+        write(*,*) 'FATAL ERROR: Cannot allocate ine,ene arrays'
+        call exit(71)
+      endif
+
+      ncomm = 0
+      ine = 0
+      ene = 0
+      ipoly = 0
+      epoly = 0
+      ins = 0
+      ens = 0
+      iedge = 0
+      eedge = 0
+      do jp=1,nproc
+        do jp2 = jp+1,nproc
+          if(commid(jp,jp2).eq.0) cycle
+          ncomm(jp) = ncomm(jp) + 1
+          ncomm(jp2) = ncomm(jp2) + 1
+          n1 = ncomm(jp)
+          n2 = ncomm(jp2)
+          icomm(n1,jp) = jp
+          icomm(n2,jp2) = jp
+          ecomm(n1,jp) = jp2
+          ecomm(n2,jp2) = jp2
+
+! *** first element swaps
+
+          do j = nep(jp)+1,nep(jp)+nehalo(jp) !parse element halo of jp
+            eG = elemapL2G(j,jp)
+            if(epart(eG).eq.jp2) then  !found one, add to epoly
+              ene(n1,jp) = ene(n1,jp) + 1
+              epoly(ene(n1,jp),n1,jp) = j
+              ine(n2,jp2) = ine(n2,jp2) + 1
+              j2 = elemapG2L(2,eG)
+              ipoly(ine(n2,jp2),n2,jp2) = j2
+            endif
+          enddo
+
+          do j = nep(jp2)+1,nep(jp2)+nehalo(jp2) !parse element halo of jp2
+            eG = elemapL2G(j,jp2)
+            if(epart(eG).eq.jp) then  !found one, add to epoly
+              ene(n2,jp2) = ene(n2,jp2) + 1
+              epoly(ene(n2,jp2),n2,jp2) = j
+              ine(n1,jp) = ine(n1,jp) + 1
+              j2 = elemapG2L(2,eG)
+              ipoly(ine(n1,jp),n1,jp) = j2
+            endif
+          enddo
+
+!        write(*,*) ' before dups jproc,ncomm= ',jp,ncomm(jp)
+!        do k=1,ncomm(jp)
+!          write(*,*) '    icomm,ecomm,ine,ene= ',icomm(k,jp),ecomm(k,jp),ine(k,jp),ene(k,jp)
+!          write(*,*) '    ipoly= ',(ipoly(kk,k,jp),kk=1,ine(k,jp))
+!          write(*,*) '    epoly= ',(epoly(kk,k,jp),kk=1,ene(k,jp))
+!        enddo
+!        write(*,*) ' '
+
+! *** remove duplicates in ipoly (epoly is ok)
+
+          if(ine(n1,jp).gt.1) then
+            kk = 1
+            do j = 2,ine(n1,jp)
+              found = .false.
+              do k = 1,kk
+                if(ipoly(j,n1,jp).eq.ipoly(k,n1,jp)) then
+                  found = .true.
+                  exit
+                endif
+              enddo
+              if(.not.found) then
+                kk = kk + 1
+                ipoly(kk,n1,jp) = ipoly(j,n1,jp)
+              endif
+            enddo
+            ine(n1,jp) = kk
+          endif
+
+          if(ine(n2,jp).gt.1) then
+            kk = 1
+            do j = 2,ine(n2,jp)
+              found = .false.
+              do k = 1,kk
+                if(ipoly(j,n2,jp).eq.ipoly(k,n2,jp)) then
+                  found = .true.
+                  exit
+                endif
+              enddo
+              if(.not.found) then
+                kk = kk + 1
+                ipoly(kk,n2,jp) = ipoly(j,n2,jp)
+              endif
+            enddo
+            ine(n2,jp) = kk
+          endif
+
+!        write(*,*) ' after dups jproc,ncomm= ',jp,ncomm(jp)
+!        do k=1,ncomm(jp)
+!          write(*,*) '    icomm,ecomm,ine,ene= ',icomm(k,jp),ecomm(k,jp),ine(k,jp),ene(k,jp)
+!          write(*,*) '    ipoly= ',(ipoly(kk,k,jp),kk=1,ine(k,jp))
+!          write(*,*) '    epoly= ',(epoly(kk,k,jp),kk=1,ene(k,jp))
+!        enddo
+!        write(*,*) ' '
+
+! *** then side(edge) swaps
+
+          do j = 1,nsp(jp)  !parse sides to find interfaces
+            nG = sidemapL2G(j,jp)
+            j2 = sidemapG2L(jp2,nG)
+            if(j2.gt.0) then  !found one, add to iedge,eedge
+              ins(n1,jp) = ins(n1,jp) + 1
+              iedge(ins(n1,jp),n1,jp) = j
+              ens(n1,jp) = ens(n1,jp) + 1
+              eedge(ens(n1,jp),n1,jp) = j
+              ins(n2,jp2) = ins(n2,jp2) + 1
+              iedge(ins(n2,jp2),n2,jp2) = j2
+              ens(n2,jp2) = ens(n2,jp2) + 1
+              eedge(ens(n2,jp2),n2,jp2) = j2
+            endif
+          enddo
+
+
+!          write(*,*) ' iedge  jproc,ncomm= ',jp,ncomm(jp)
+!          do k=1,ncomm(jp)
+!            write(*,*) '    icomm,ecomm,ins,ens= ',icomm(k,jp),ecomm(k,jp),ins(k,jp),ens(k,jp)
+!            write(*,*) '    iedge= ',(iedge(kk,k,jp),kk=1,ins(k,jp))
+!            write(*,*) '    eedge= ',(eedge(kk,k,jp),kk=1,ens(k,jp))
+!          enddo
+!          write(*,*) ' '
+
+        enddo
+      enddo
+      
+
+! *** write it out to debug
+      do jp=1,nproc
+        write(*,*) ' jproc,ncomm= ',jp,ncomm(jp)
+        do k=1,ncomm(jp)
+          write(*,*) '    icomm,ecomm,ine,ene= ',icomm(k,jp),ecomm(k,jp),ine(k,jp),ene(k,jp)
+          write(*,*) '    ipoly= ',(ipoly(kk,k,jp),kk=1,ine(k,jp))
+          write(*,*) '    epoly= ',(epoly(kk,k,jp),kk=1,ene(k,jp))
+          write(*,*) '    icomm,ecomm,ins,ens= ',icomm(k,jp),ecomm(k,jp),ins(k,jp),ens(k,jp)
+          write(*,*) '    iedge= ',(iedge(kk,k,jp),kk=1,ins(k,jp))
+          write(*,*) '    eedge= ',(eedge(kk,k,jp),kk=1,ens(k,jp))
+        enddo
+        write(*,*) ' '
+      enddo
 
       RETURN
       END
@@ -649,9 +857,10 @@
       implicit none
 
 ! *** local variables
-      integer j,jp,k,istat,myproc
+      integer j,jp,k,kk,istat,myproc,maxbufsize
       integer nG,eG,sG,ncn2
       integer nepmax,nppmax,nspmax,netot,nptot,nstot
+      integer, allocatable :: elemapG2Lp(:),nodemapG2Lp(:), sidemapG2Lp(:)
       integer, allocatable :: nenp(:,:),ieadjp(:,:),numsideTp(:,:),IECodep(:),nbcp(:)
       integer, allocatable :: isidep(:,:),iendsp(:,:)
       real, allocatable :: xyzp(:,:),alfap(:)
@@ -662,7 +871,7 @@
 !  allocate arrays for grid partition
         nepmax = maxval(nep) + maxval(nehalo)
         nppmax = maxval(npp) + maxval(nphalo)
-        ALLOCATE (elemapG2Lp(ne),nodemapG2L(np),sidemapG2L(nsides),&
+        ALLOCATE (elemapG2Lp(ne),nodemapG2Lp(np),sidemapG2Lp(nsides),&
           nenp(nepmax,4),xyzp(nppmax,3),areap(nepmax),nbcp(nppmax),alfap(nppmax), &
           ieadjp(5,nepmax),numsideTp(4,nepmax),IECodep(nepmax), STAT = istat )
 
@@ -713,15 +922,15 @@
           nG = elemapL2G(j,jp)
           elemapG2Lp(nG) = j
         enddo
-        nodemapG2L = 0
+        nodemapG2Lp = 0
         do j=1,nptot
           nG = nodemapL2G(j,jp)
-          nodemapG2L(nG) = j
+          nodemapG2Lp(nG) = j
         enddo
-        sidemapG2L = 0        
+        sidemapG2Lp = 0        
         do j=1,nstot
           nG = sidemapL2G(j,jp)
-          sidemapG2L(nG) = j
+          sidemapG2Lp(nG) = j
         enddo
         
         ! form local arrays for output
@@ -737,11 +946,11 @@
           ncn2 = ncn -1 + min0(1,nen(eG,ncn))
           do k=1,ncn2
             nG = nen(eG,k)
-            nenp(j,k) = nodemapG2L(nG)
+            nenp(j,k) = nodemapG2Lp(nG)
             nG = ieadj(k+1,eG)
             if(nG.gt.0) ieadjp(k+1,j) = elemapG2Lp(nG)
             nG = numsideT(k,eG)
-            numsideTp(k,j) = sidemapG2L(nG)
+            numsideTp(k,j) = sidemapG2Lp(nG)
           enddo
         enddo
         
@@ -794,16 +1003,25 @@
               nG = iside(k,sG)
               if(nG.gt.0) isidep(k,j)=elemapG2Lp(nG)
               nG = iends(k,sG)
-              iendsp(k,j)=nodemapG2L(nG)
+              iendsp(k,j)=nodemapG2Lp(nG)
             enddo
+            if(isidep(2,j).gt.0.and.isidep(1,j).gt.isidep(2,j)) then
+              kk = isidep(2,j)
+              isidep(2,j) = isidep(1,j)
+              isidep(1,j) = kk
+              sdxp(j) = -sdxp(j)
+              sdyp(j) = -sdyp(j)
+            endif
+            write(*,*) ' part,j,is1,is2= ',jp,j,isidep(1,j),isidep(2,j)
             isidep(3,j)=iside(3,sG)
           enddo
-          ! resort isides for halo
+          ! update outer isides for halo
           do j=nsp(jp)+1,nstot
             if(isidep(1,j).eq.0) then
               isidep(1,j) = isidep(2,j)
               isidep(2,j) = 0
             endif
+            write(*,*) ' part,j,is1,is2= ',jp,j,isidep(1,j),isidep(2,j)
           enddo
         
           ! write it out
@@ -816,9 +1034,18 @@
 ! *** write map information
         write(22) nproc,jp,ne,np,nsides,numhalo
         write(22) (elemapG2Lp(j),j=1,ne),(elemapL2G(j,jp),j=1,netot)
-        write(22) (nodemapG2L(j),j=1,np),(nodemapL2G(j,jp),j=1,nptot)
-        write(22) (sidemapG2L(j),j=1,nsides),(sidemapL2G(j,jp),j=1,nstot)
-        write(22) ((halomap(j,k),j=1,6),k=1,numhalo)
+        write(22) (nodemapG2Lp(j),j=1,np),(nodemapL2G(j,jp),j=1,nptot)
+        write(22) (sidemapG2Lp(j),j=1,nsides),(sidemapL2G(j,jp),j=1,nstot)
+! *** write comm information for this partition
+        maxbufsize = max(maxval(ine(:,jp)),maxval(ene(:,jp)),maxval(ins(:,jp)),maxval(ens(:,jp)))
+        write(22) ncomm(jp),maxbufsize
+        do j=1,ncomm(jp)
+          write(22) icomm(j,jp),ecomm(j,jp),ine(j,jp),ene(j,jp),ins(j,jp),ens(j,jp)
+          write(22) (ipoly(k,j,jp),k=1,ine(j,jp))
+          write(22) (epoly(k,j,jp),k=1,ene(j,jp))
+          write(22) (iedge(k,j,jp),k=1,ins(j,jp))
+          write(22) (eedge(k,j,jp),k=1,ens(j,jp))
+        enddo
         CLOSE(unit=22)
 
 ! *** write base output
