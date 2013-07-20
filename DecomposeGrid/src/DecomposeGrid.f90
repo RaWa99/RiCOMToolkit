@@ -367,7 +367,7 @@
 
       nepmax = maxval(nep) + maxval(nehalo)
       nehmax = nproc*maxval(nehalo)
-      ALLOCATE (elemapL2G(nepmax,nproc),halomap(6,nehmax), STAT = istat )
+      ALLOCATE (elemapL2G(nepmax,nproc), STAT = istat )
       if(istat.ne.0) then
         write(*,*) 'FATAL ERROR: Cannot allocate L2G map array'
         call exit(71)
@@ -490,6 +490,8 @@
       ! eliminate duplicates
       do jp=1,nproc
         ns = 1
+        mr = sidemapL2G(ns,jp)
+        sidemapG2L(jp,mr) = ns
         do k=2,nsp(jp)
           mr = sidemapL2G(k,jp)
           found = .false.
@@ -505,7 +507,8 @@
             sidemapL2G(ns,jp) = mr
             sidemapG2L(jp,mr) = ns
  !           write(*,*) ' jp,k,kk,mr,mr2,ns=',jp,k,kk,mr,mr2,ns
-          endif
+ !          write(*,*) ' ns,ep,L2G,G2L=',ns,jp,sidemapL2G(ns,jp),sidemapG2L(jp,mr) 
+         endif
         enddo
         nsp(jp) = ns
         ! add sides for halo
@@ -518,6 +521,7 @@
             ns = ns + 1
             sidemapL2G(ns,jp) = mr
 !            write(*,*) ' add ns,ep,sidemapL2G=',ns,jp,sidemapL2G(ns,jp) 
+!           write(*,*) '  add ns,ep,L2G,G2L=',ns,jp,sidemapL2G(ns,jp),sidemapG2L(jp,mr) 
           enddo
         enddo
         nshalo(jp) = ns - nsp(jp)
@@ -539,6 +543,7 @@
 !            sidemapG2L(jp,mr) = ns
 !            sidemapEP(ns,jp) = sidemapEP(k,jp)
  !           write(*,*) ' jp,k,kk,mr,mr2,ns=',jp,k,kk,mr,mr2,ns
+!           write(*,*) '  dup ns,ep,L2G,G2L=',ns,jp,sidemapL2G(ns,jp),sidemapG2L(jp,mr) 
           endif
         enddo
         nshalo(jp) = ns - nsp(jp)
@@ -680,8 +685,10 @@
       maxedge = maxval(nshalo)
       ALLOCATE (ine(ncomm_max,nproc),ene(ncomm_max,nproc),&
                 ins(ncomm_max,nproc),ens(ncomm_max,nproc),&
+                inh(ncomm_max,nproc),enh(ncomm_max,nproc),&
                 ipoly(maxpoly,ncomm_max,nproc),epoly(maxpoly,ncomm_max,nproc), &
-                iedge(maxedge,ncomm_max,nproc),eedge(maxedge,ncomm_max,nproc), STAT = istat )
+                iedge(maxedge,ncomm_max,nproc),eedge(maxedge,ncomm_max,nproc), &
+                ihalo(maxedge,ncomm_max,nproc),ehalo(maxedge,ncomm_max,nproc), STAT = istat )
       if(istat.ne.0) then
         write(*,*) 'FATAL ERROR: Cannot allocate ine,ene arrays'
         call exit(71)
@@ -696,6 +703,10 @@
       ens = 0
       iedge = 0
       eedge = 0
+      inh = 0
+      enh = 0
+      ihalo = 0
+      ehalo = 0
       do jp=1,nproc
         do jp2 = jp+1,nproc
           if(commid(jp,jp2).eq.0) cycle
@@ -812,6 +823,84 @@
 !          enddo
 !          write(*,*) ' '
 
+! *** then halo side(edge) swaps
+
+          do j = nsp(jp)+1,nsp(jp)+nshalo(jp) !parse side halo of jp
+            nG = sidemapL2G(j,jp)
+            if(sidemapG2L(jp2,nG).gt.0) then  !found one, add to epoly
+              enh(n1,jp) = enh(n1,jp) + 1
+              ehalo(enh(n1,jp),n1,jp) = j
+              inh(n2,jp2) = inh(n2,jp2) + 1
+              j2 = sidemapG2L(jp2,nG)
+              ihalo(inh(n2,jp2),n2,jp2) = j2
+            endif
+          enddo
+
+          do j = nsp(jp2)+1,nsp(jp2)+nshalo(jp2) !parse side halo of jp2
+            nG = sidemapL2G(j,jp2)
+            if(sidemapG2L(jp,nG).gt.0) then  !found one, add to epoly
+              enh(n2,jp2) = enh(n2,jp2) + 1
+              ehalo(enh(n2,jp2),n2,jp2) = j
+              inh(n1,jp) = inh(n1,jp) + 1
+              j2 = sidemapG2L(jp,nG)
+              ihalo(inh(n1,jp),n1,jp) = j2
+            endif
+          enddo
+
+          write(*,*) ' before dups jproc,ncomm= ',jp,ncomm(jp)
+          do k=1,ncomm(jp)
+            write(*,*) '    icomm,ecomm,inh,enh= ',icomm(k,jp),ecomm(k,jp),inh(k,jp),enh(k,jp)
+            write(*,*) '    ihalo= ',(ihalo(kk,k,jp),kk=1,inh(k,jp))
+            write(*,*) '    ehalo= ',(ehalo(kk,k,jp),kk=1,enh(k,jp))
+          enddo
+          write(*,*) ' '
+
+! *** remove duplicates in ihalo (ehalo is ok)
+
+          if(inh(n1,jp).gt.1) then
+            kk = 1
+            do j = 2,inh(n1,jp)
+              found = .false.
+              do k = 1,kk
+                if(ihalo(j,n1,jp).eq.ihalo(k,n1,jp)) then
+                  found = .true.
+                  exit
+                endif
+              enddo
+              if(.not.found) then
+                kk = kk + 1
+                ihalo(kk,n1,jp) = ihalo(j,n1,jp)
+              endif
+            enddo
+            inh(n1,jp) = kk
+          endif
+
+          if(inh(n2,jp).gt.1) then
+            kk = 1
+            do j = 2,inh(n2,jp)
+              found = .false.
+              do k = 1,kk
+                if(ihalo(j,n2,jp).eq.ihalo(k,n2,jp)) then
+                  found = .true.
+                  exit
+                endif
+              enddo
+              if(.not.found) then
+                kk = kk + 1
+                ihalo(kk,n2,jp) = ihalo(j,n2,jp)
+              endif
+            enddo
+            inh(n2,jp) = kk
+          endif
+
+          write(*,*) ' after dups jproc,ncomm= ',jp,ncomm(jp)
+          do k=1,ncomm(jp)
+            write(*,*) '    icomm,ecomm,ins,ens= ',icomm(k,jp),ecomm(k,jp),inh(k,jp),enh(k,jp)
+            write(*,*) '    ihalo= ',(ihalo(kk,k,jp),kk=1,inh(k,jp))
+            write(*,*) '    ehalo= ',(ehalo(kk,k,jp),kk=1,enh(k,jp))
+          enddo
+          write(*,*) ' '
+
         enddo
       enddo
       
@@ -826,6 +915,9 @@
           write(*,*) '    icomm,ecomm,ins,ens= ',icomm(k,jp),ecomm(k,jp),ins(k,jp),ens(k,jp)
           write(*,*) '    iedge= ',(iedge(kk,k,jp),kk=1,ins(k,jp))
           write(*,*) '    eedge= ',(eedge(kk,k,jp),kk=1,ens(k,jp))
+          write(*,*) '    icomm,ecomm,inh,enh= ',icomm(k,jp),ecomm(k,jp),inh(k,jp),enh(k,jp)
+          write(*,*) '    ihalo= ',(ihalo(kk,k,jp),kk=1,inh(k,jp))
+          write(*,*) '    ehalo= ',(ehalo(kk,k,jp),kk=1,enh(k,jp))
         enddo
         write(*,*) ' '
       enddo
@@ -1005,23 +1097,21 @@
               nG = iends(k,sG)
               iendsp(k,j)=nodemapG2Lp(nG)
             enddo
-            if(isidep(2,j).gt.0.and.isidep(1,j).gt.isidep(2,j)) then
+            if(isidep(2,j).gt.0.and.isidep(1,j).gt.isidep(2,j)) then  !XXXXXXXcheck
               kk = isidep(2,j)
               isidep(2,j) = isidep(1,j)
               isidep(1,j) = kk
               sdxp(j) = -sdxp(j)
               sdyp(j) = -sdyp(j)
             endif
-            write(*,*) ' part,j,is1,is2= ',jp,j,isidep(1,j),isidep(2,j)
+!            write(*,*) ' part,j,is1,is2= ',jp,j,isidep(1,j),isidep(2,j)
             isidep(3,j)=iside(3,sG)
           enddo
-          ! update outer isides for halo
+          ! update outer isides for halo to preserve correct direction
           do j=nsp(jp)+1,nstot
-            if(isidep(1,j).eq.0) then
-              isidep(1,j) = isidep(2,j)
-              isidep(2,j) = 0
-            endif
-            write(*,*) ' part,j,is1,is2= ',jp,j,isidep(1,j),isidep(2,j)
+            isidep(1,j) = max(isidep(1,j),1)
+            isidep(2,j) = max(isidep(2,j),1)
+!            write(*,*) ' part,j,is1,is2= ',jp,j,isidep(1,j),isidep(2,j)
           enddo
         
           ! write it out
@@ -1040,11 +1130,13 @@
         maxbufsize = max(maxval(ine(:,jp)),maxval(ene(:,jp)),maxval(ins(:,jp)),maxval(ens(:,jp)))
         write(22) ncomm(jp),maxbufsize
         do j=1,ncomm(jp)
-          write(22) icomm(j,jp),ecomm(j,jp),ine(j,jp),ene(j,jp),ins(j,jp),ens(j,jp)
+          write(22) icomm(j,jp),ecomm(j,jp),ine(j,jp),ene(j,jp),ins(j,jp),ens(j,jp),inh(j,jp),enh(j,jp)
           write(22) (ipoly(k,j,jp),k=1,ine(j,jp))
           write(22) (epoly(k,j,jp),k=1,ene(j,jp))
           write(22) (iedge(k,j,jp),k=1,ins(j,jp))
           write(22) (eedge(k,j,jp),k=1,ens(j,jp))
+          write(22) (ihalo(k,j,jp),k=1,inh(j,jp))
+          write(22) (ehalo(k,j,jp),k=1,enh(j,jp))
         enddo
         CLOSE(unit=22)
 

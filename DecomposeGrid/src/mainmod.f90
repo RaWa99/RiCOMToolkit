@@ -30,13 +30,14 @@
       integer, allocatable ::  elemapG2L(:,:), nodemapG2L(:,:), sidemapG2L(:,:)
       integer, allocatable ::  elemapL2G(:,:), nodemapL2G(:,:),sidemapL2G(:,:)
       integer, allocatable ::  icomm(:,:), ecomm(:,:), commid(:,:)
-      integer, allocatable ::  ine(:,:), ene(:,:),ins(:,:), ens(:,:)
+      integer, allocatable ::  ine(:,:), ene(:,:),ins(:,:), ens(:,:),inh(:,:), enh(:,:)
       real, allocatable ::  sxy(:,:), xyz(:,:)
       real, allocatable ::  un(:,:), ut(:,:), wn(:,:), ut1(:,:), ut2(:,:) !AB3 Coriolis
 
 ! 3D data
       integer, allocatable ::  ipoly(:,:,:), epoly(:,:,:)
       integer, allocatable ::  iedge(:,:,:), eedge(:,:,:)
+      integer, allocatable ::  ihalo(:,:,:), ehalo(:,:,:)
 
 
 ! Character data
