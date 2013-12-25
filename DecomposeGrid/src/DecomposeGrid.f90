@@ -243,8 +243,8 @@
         endif
 
         do j=1,ne
-          do k=1,3
-            eind(3*(j-1)+k) = nen(j,k)
+          do k=1,ncn
+            eind(ncn*(j-1)+k) = nen(j,k)
           enddo
         enddo
 
