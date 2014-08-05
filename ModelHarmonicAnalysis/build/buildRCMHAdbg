@@ -1,0 +1,3 @@
+#!/bin/sh
+# build ModelHA - compile and link
+ifort -r8 -check bounds -check uninit -traceback ../src/*.f90 -o ../../bin/RCMHAdbg
