@@ -1,0 +1,3 @@
+#!/bin/sh
+# build RCM2Tecplot - compile and link
+ifort -r8 ../src/*.f90 -o ../../bin/RCM2Tec
