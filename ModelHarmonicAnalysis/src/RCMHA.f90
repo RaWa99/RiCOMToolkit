@@ -15,13 +15,13 @@
       integer :: ntime,nskip,nskip1,nc,ninf,ihr0,nprof,np,npv, nson,nsed,nsol
       integer :: nlev, npvx, nfile, ncon, ncon2, nph, nphu,ndf,kkount,infz,nii
       integer :: iex,nex,ntypex,npx,nprx,node,nentmp
-      integer :: ne,nnodes,nsides,ncn
+      integer :: ne,nnodes,nsides,ncn,izcoord,npvgrd
       real*8 tet, arg
       real a(400)  !,rhs(ncon2),rhu(ncon2),rhv(ncon2)
       real :: x,y,ab,ba1,wj,wk,wd,ws,sind,sins,td,ts,gg,errz0,aa,pp
       real :: ersf,eruf,ervf,ain,phin,dep
       integer, allocatable ::  npt(:),nen(:,:),numsideT(:,:)
-      real, allocatable ::  xp(:),yp(:),zp(:)
+      real, allocatable ::  xp(:),yp(:),zp(:),zdep(:)
       real, allocatable ::  un(:,:),ut(:,:)
       real, allocatable ::  sdx(:),sdy(:)
       real, allocatable ::  zeta(:),ubar(:,:),vbar(:,:),zs(:)
@@ -164,6 +164,16 @@
       read(20) (xp(j),j=1,nnodes)
       read(20) (yp(j),j=1,nnodes)
       read(20) (zp(j),j=1,nnodes)
+    
+      if(npv.gt.1) then
+        npvgrd = npv   !+ min(1,max(0,izcoord-1))
+        ALLOCATE ( zdep(npvgrd), STAT = istat )
+        if(istat.ne.0) then
+          write(*,*) 'FATAL ERROR: Cannot allocate zdep',istat
+          stop
+        endif
+        read(20) (zdep(k),k=1,npvgrd)    !write  z-grid (m)
+      endif
 
 ! *** read element list
       read(20) ((nen(j,k),k=1,ncn),j=1,ne)
@@ -208,7 +218,10 @@
           read(20) TET  !,nph,nphu,npv
           read(20)
           read(20)
-          read(20)
+          read(20)    
+          if(npv.gt.1) then
+            read(20)    
+          endif
           if(nson.gt.0) then
             read(20)
           endif
@@ -228,6 +241,9 @@
 ! *** read velocity (un,ut)
         read(20) ((un(kv,i),kv=1,npv),i=1,nphu)
         read(20) ((ut(kv,i),kv=1,npv),i=1,nphu)
+        if(npv.gt.1) then
+          read(20)    
+        endif
 ! *** average (u,v) to centroid
         do j=1,ne
           do jj=1,ncn
@@ -535,6 +551,9 @@
       read(20) !x
       read(20) !y
       read(20) !z
+      if(npv.gt.1) then
+        read(20) !zdep
+      endif
       read(20) !list  
       read(20) !sdx,sdy
       read(20) !numsideT
@@ -544,6 +563,9 @@
           read(20)  !eta
           read(20)  !u
           read(20)  !v
+          if(npv.gt.1) then
+            read(20) !w
+          endif
           if(nson.gt.0) then
             read(20)
           endif
@@ -564,6 +586,9 @@
 ! *** read velocity (un,ut)
         read(20) ((un(kv,i),kv=1,npv),i=1,nphu)
         read(20) ((ut(kv,i),kv=1,npv),i=1,nphu)
+        if(npv.gt.1) then
+          read(20) !w
+        endif
 ! *** average (u,v) to centroid
         do j=1,ne
           do jj=1,ncn
