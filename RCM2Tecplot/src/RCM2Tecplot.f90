@@ -30,7 +30,7 @@
   
       implicit none
 
-      integer :: i,j,k,noptcount, istat,npvgrd
+      integer :: i,j,k,it, noptcount, istat,npvgrd,istart,istop
       character*256 fnamedata
       character(18) :: AnalysisTime
 
@@ -39,6 +39,12 @@
       write(*,*) ' Enter filename for input RiCOM binary file'
       read(*,'(a)') fnamedata
       open(unit=20,file=fnamedata,status='old',form='unformatted')
+
+      write(*,*) ' Enter time slice start index'
+      read(*,*) istart
+
+      write(*,*) ' Enter time slice end index'
+      read(*,*) istop
 
       write(*,*) ' Enter output option'
       read(*,*) nopt
@@ -85,8 +91,51 @@
       
 !      call GetArea()
       call EdgeSetup()
+      
+! *** initialize
+      un = 0.
+      ut = 0.
+      if(npv.gt.1) wz = 0.
 
-      do
+      do it=1,istart-1
+        read(20, IOSTAT=istat) TET
+        if(istat.ne.0) then
+          exit
+        endif
+        read(20, IOSTAT=istat) !(eta(j),j=1,ne)
+! *** read velocity (un,ut)
+        if(istat.eq.0) read(20, IOSTAT=istat) !((un(k,i),k=1,npv),i=1,nsides)
+        if(istat.eq.0) read(20, IOSTAT=istat) !((ut(k,i),k=1,npv),i=1,nsides)    
+        if(istat.eq.0.and.npv.gt.1) read(20, IOSTAT=istat) !((wz(k,i),k=1,npvgrd-1),i=1,ne)
+
+! *** average (u,v) to centroid
+!        do j=1,ne
+!          do jj=1,ncn
+!            ii = numsideT(jj,j)
+!            do kv=1,npv
+!              ubar(j,kv) = ubar(j,kv) + un(kv,ii)*sdy(ii) + ut(kv,ii)*sdx(ii)
+!              vbar(j,kv) = vbar(j,kv) - un(kv,ii)*sdx(ii) + ut(kv,ii)*sdy(ii)
+!            enddo
+!          enddo
+!        enddo
+!        ubar = ubar/float(ncn)
+!        vbar = vbar/float(ncn)
+        if(nson.gt.0.and.istat.eq.0) then
+          read(20, IOSTAT=istat)
+        endif
+        if(nsed.gt.0.and.istat.eq.0) then
+          read(20, IOSTAT=istat)
+        endif
+        if(nsol.gt.0.and.istat.eq.0) then
+          read(20, IOSTAT=istat)
+        endif
+        if(istat.ne.0) then
+          write(*,*) ' Error reading input file at time=', TET
+          exit
+        endif
+      enddo
+      
+      do it = 1,istop-istart+1
         read(20, IOSTAT=istat) TET 
         if(istat.ne.0) then
           exit
@@ -491,10 +540,10 @@
             endif
 
 !            zero = 0.0
-            write(22,'(6(1x,e14.6))') ((uc(j,k),j=1,np),k=1,npvgrd), &
+            write(22,'(6(1x,e14.6))') ((uc(k,j),j=1,np),k=1,npvgrd), &
                         ((( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,npv)
 
-            write(22,'(6(1x,e14.6))') ((vc(j,k),j=1,np),k=1,npvgrd), &
+            write(22,'(6(1x,e14.6))') ((vc(k,j),j=1,np),k=1,npvgrd), &
                         (((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,npv)
 
             if(npv.gt.1) then
@@ -651,10 +700,10 @@
                         (sdep(j)+sbot(j),j=1,nsides) !eta,zbot,level
             endif
 
-            write(22,'(6(1x,e14.6))') ((uc(j,k),j=1,np),k=1,npvgrd), &
+            write(22,'(6(1x,e14.6))') ((uc(k,j),j=1,np),k=1,npvgrd), &
                         ((( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,npv)
 
-            write(22,'(6(1x,e14.6))') ((vc(j,k),j=1,np),k=1,npvgrd), &
+            write(22,'(6(1x,e14.6))') ((vc(k,j),j=1,np),k=1,npvgrd), &
                         (((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,npv)
 
             if(npv.gt.1) then
@@ -1040,27 +1089,27 @@
 !   set sdep
 
 !   Get new ones
-      do j=1,nsides
+      do j=1,ne
         n1 = iside(1,j)
         n2 = iside(2,j)
 
-        if(n2.eq.0) then
+        if(n2.le.0.or.n2.gt.ne) then
           etaside = eta(n1)
         else
           etaside = amax1(eta(n1),eta(n2))
         endif
         
-        zmax = amax1(zp(iends(1,j)),zp(iends(2,j)))
-        zmin = amin1(zp(iends(1,j)),zp(iends(2,j)))
+!        zmax = amax1(zp(iends(1,j)),zp(iends(2,j)))
+!        zmin = amin1(zp(iends(1,j)),zp(iends(2,j)))
 
-        if(etaside.ge.zmax) then
-          depth = etaside - 0.5*(zmax+zmin)  !refdep(j)
-        elseif(etaside.gt.zmin) then
-          depth = 0.5*(etaside-zmin)**2/(zmax-zmin)
-!          depth = etaside - refdep(j)  !force old method
-        else
-          depth = 0.
-        endif
+!        if(etaside.ge.zmax) then
+!          depth = etaside - 0.5*(zmax+zmin)  !refdep(j)
+!        elseif(etaside.gt.zmin) then
+!          depth = 0.5*(etaside-zmin)**2/(zmax-zmin)
+          depth = etaside - sbot(j)  !force old method
+!        else
+!          depth = 0.
+!        endif
         
         if(depth.gt.0) then !depmin) then
           sdep(j) = depth

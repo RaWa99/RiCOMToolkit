@@ -678,7 +678,7 @@
         if(nprof.eq.0) then
           write(25,*)  'VARIABLES= "x" "y" "z" "e" "ep" "u" "up" "v" "vp" "umaj" "umin" "ph" "dir"'
           write(25,*) ' ZONE T="',name(j),'" '
-          write(25,"(' N=',i7,' E=',i7 )" )  nnodes,nn
+          write(25,"(' N=',i7,' E=',i7 )" )  nnodes,ne  !nn
 !          write(25,*)  '  F=FEPOINT ET=TRIANGLE'
           if(ncn.eq.3) then
             write(25,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
@@ -695,25 +695,25 @@
         endif
 !        do i=1,nn
           if(nprof.eq.0) then
-            if(npv.gt.1) then
+!            if(npv.gt.1) then
 !              ii = mod(i-1,nph) + 1
-              write(25,510) ampub(i,j)*cos(fac*phub(i,j)),ampvb(i,j)*cos(fac*phvb(i,j)),&
-                                ampz(i,j)*cos(fac*phz(i,j))
-            else
+!              write(25,510) ampub(i,j)*cos(fac*phub(i,j)),ampvb(i,j)*cos(fac*phvb(i,j)),&
+!                               ampz(i,j)*cos(fac*phz(i,j))
+!            else
               write(25,'(6(1x,e14.6))') (xp(i),i=1,nnodes)
               write(25,'(6(1x,e14.6))') (yp(i),i=1,nnodes)
               write(25,'(6(1x,e14.6))') (zp(i),i=1,nnodes)
-              write(25,'(6(1x,e14.6))') (ampz(i,j),i=1,nn)
-              write(25,'(6(1x,e14.6))') (phz(i,j),i=1,nn)
-              write(25,'(6(1x,e14.6))') (ampub(i,j),i=1,nn)
-              write(25,'(6(1x,e14.6))') (phub(i,j),i=1,nn)
-              write(25,'(6(1x,e14.6))') (ampvb(i,j),i=1,nn)
-              write(25,'(6(1x,e14.6))') (phvb(i,j),i=1,nn)
-              write(25,'(6(1x,e14.6))') (amaj(i),i=1,nn)
-              write(25,'(6(1x,e14.6))') (amin(i),i=1,nn)
-              write(25,'(6(1x,e14.6))') (g(i),i=1,nn)
-              write(25,'(6(1x,e14.6))') (Ainc(i),i=1,nn)
-            endif
+              write(25,'(6(1x,e14.6))') (ampz(i,j),i=1,ne)  !nn)
+              write(25,'(6(1x,e14.6))') (phz(i,j),i=1,ne)  !nn)
+              write(25,'(6(1x,e14.6))') (ampub(i,j),i=1,ne)  !nn)
+              write(25,'(6(1x,e14.6))') (phub(i,j),i=1,ne)  !nn)
+              write(25,'(6(1x,e14.6))') (ampvb(i,j),i=1,ne)  !nn)
+              write(25,'(6(1x,e14.6))') (phvb(i,j),i=1,ne)  !nn)
+              write(25,'(6(1x,e14.6))') (amaj(i),i=1,ne)  !nn)
+              write(25,'(6(1x,e14.6))') (amin(i),i=1,ne)  !nn)
+              write(25,'(6(1x,e14.6))') (g(i),i=1,ne)  !nn)
+              write(25,'(6(1x,e14.6))') (Ainc(i),i=1,ne)  !nn)
+!            endif
           else
             if(mod(i,npv).eq.1) then
               node = (i-1)/npv + 1
@@ -729,7 +729,7 @@
           endif
 !      enddo
       
-      if(nprof.eq.0.and.npv.le.1) then
+      if(nprof.eq.0) then  !.and.npv.le.1) then
         do jj=1,ne
           if(NEN(jj,ncn).eq.0) then
             NENtmp = NEN(jj,ncn-1)
