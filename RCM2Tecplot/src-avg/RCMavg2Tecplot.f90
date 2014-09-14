@@ -8,14 +8,14 @@
       integer :: nson,nsed,nsol,iOPsol
       integer :: neqtide=0, neMB=0, nsbc
       integer :: nopt
-      integer :: izcoord=0,izgrid=0
+      integer :: izcoord=2,izgrid=0
       integer :: jUprofile=0,jCprofile=0, jSprofile=0
       integer, allocatable :: nen(:,:),numsideT(:,:),iside(:,:)
       integer, allocatable :: iends(:,:)
       real ::  TET
       real, allocatable ::  xp(:),yp(:),zp(:),zdep(:),area(:)
       real, allocatable ::  eta(:),un(:,:),ut(:,:),wz(:,:)
-      real, allocatable ::  uc(:,:),vc(:,:)
+      real, allocatable ::  uc(:,:),vc(:,:),spd(:,:),spdcc(:,:)
       real, allocatable ::  sxy(:,:),sbot(:),sdx(:),sdy(:),sdep(:)
       real, allocatable ::  rhv(:),gamma(:) !scratch vectors
       character*256 OutResFile
@@ -30,7 +30,8 @@
   
       implicit none
 
-      integer :: i,j,k,it, noptcount, istat,npvgrd,istart,istop
+      integer :: i,ii,j,jj,k,kv,it, noptcount, istat,npvgrd,istart,istop
+      real ::  fcount,fcountcc,ub,vb,spd1,spd2 
       character*256 fnamedata
       character(18) :: AnalysisTime
 
@@ -72,7 +73,8 @@
           sxy(2,nsides),sbot(nsides),sdx(nsides),sdy(nsides), &
           numsideT(ncn,ne),iside(2,nsides),area(ne),iends(2,nsides), &
           uc(npvgrd,np),vc(npvgrd,np),zdep(npvgrd),rhv(nsides),gamma(nsides),sdep(nsides), &
-          eta(ne),un(npv,nsides),ut(npv,nsides),wz(npv,ne), STAT = istat )
+          eta(ne),un(npv,nsides),ut(npv,nsides),wz(npv,ne), &
+          spd(npvgrd,np),spdcc(npvgrd-1,ne), STAT = istat )
       if(istat.ne.0) then
         write(*,*) 'FATAL ERROR: Cannot allocate ncon main storage arrays',istat
         stop
@@ -126,6 +128,10 @@
           exit
         endif
       enddo
+
+      spd = 0.
+      fcount = 0.
+      fcountcc = 0.
       
       do it = 1,istop-istart+1
         read(20, IOSTAT=istat) TET 
@@ -138,18 +144,44 @@
         if(istat.eq.0) read(20, IOSTAT=istat) ((ut(k,i),k=1,npv),i=1,nsides)    
         if(istat.eq.0.and.npv.gt.1) read(20, IOSTAT=istat) ((wz(k,i),k=1,npvgrd-1),i=1,ne)
 
-! *** average (u,v) to centroid
-!        do j=1,ne
-!          do jj=1,ncn
-!            ii = numsideT(jj,j)
-!            do kv=1,npv
-!              ubar(j,kv) = ubar(j,kv) + un(kv,ii)*sdy(ii) + ut(kv,ii)*sdx(ii)
-!              vbar(j,kv) = vbar(j,kv) - un(kv,ii)*sdx(ii) + ut(kv,ii)*sdy(ii)
-!            enddo
-!          enddo
-!        enddo
-!        ubar = ubar/float(ncn)
-!        vbar = vbar/float(ncn)
+! *** average speed
+        call  GlobalQInterp ()
+        fcount = fcount + 1.
+        do j=1,np
+          do k=1,npv
+            spd(k,j) = spd(k,j) + sqrt(uc(k,j)**2 + vc(k,j)**2)
+          enddo
+        enddo
+        
+        if(izcoord.eq.2) then
+          do j=1,np
+            spd1 = spd(1,j)
+            do k=2,npv
+              spd2 = spd(k,j)
+              spd(k,j) = 0.5*(spd1 + spd2)
+              spd1 = spd2
+            enddo
+            spd(npv+1,j) = spd1
+          enddo
+        endif
+
+! *** average speed to centroid
+        fcountcc = fcountcc + 1.
+        do j=1,ne
+          do kv=1,npv
+            ub = 0.
+            vb = 0.
+            do jj=1,ncn
+              ii = numsideT(jj,j)
+              ub = ub + un(kv,ii)*sdy(ii) + ut(kv,ii)*sdx(ii)
+              vb = vb - un(kv,ii)*sdx(ii) + ut(kv,ii)*sdy(ii)
+            enddo
+            ub = ub/float(ncn)
+            vb = vb/float(ncn)
+            spdcc(kv,j) = sqrt(ub*ub + vb*vb)
+          enddo
+        enddo
+
         if(nson.gt.0.and.istat.eq.0) then
           read(20, IOSTAT=istat)
         endif
@@ -164,11 +196,14 @@
           exit
         endif
       
+      enddo
+      
+      spd = spd/fcount
+      spdcc = spdcc/fcountcc
+
 ! *** write tecplot file
         write(*,*) ' call tecout, nopt=',nopt
         call OutputTecplot
-
-      enddo
 
 ! *** clean up
       close(20)
@@ -404,7 +439,7 @@
                   write(22,*)'VARIABLES="X" "Y"  "Z" "U" "V" "W" "Sigt" "PSU" "T" '
                 endif
               else
-                write(22,*)'VARIABLES="X" "Y" "Z" "U" "V" "W" '
+                write(22,*)'VARIABLES="X" "Y" "Z" "U" "V" "W" "spd"'
               endif
             else
               if(nson.gt.0) then
@@ -533,7 +568,7 @@
                         (sdep(j)+sbot(j),j=1,nsides) !eta,zbot,level
             endif
 
-!            zero = 0.0
+            zero = 0.0
             write(22,'(6(1x,e14.6))') ((uc(k,j),j=1,np),k=1,npvgrd), &
                         ((( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,npv)
 
@@ -541,7 +576,9 @@
                         (((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,npv)
 
             if(npv.gt.1) then
-              write(22,'(6(1x,e14.6))') ((wz(k,j),k=1,npvgrd-1),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((spdcc(k,j),k=1,npvgrd-1),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((spd(k,j),j=1,np),k=1,npvgrd), &
+                          (((zero),j=1,nsides),k=1,npv)
             endif
 
             npvm = max(1,npv-1)
@@ -707,6 +744,8 @@
 
             if(npv.gt.1) then
               write(22,'(6(1x,e14.6))') ((wz(k,j),k=1,npv),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((spd(k,j),j=1,np),k=1,npvgrd), &
+                          (((zero),j=1,nsides),k=1,npv)
             endif
 
             npvm = max(1,npv-1)
@@ -1227,11 +1266,8 @@
 
       uc = 0.
       vc = 0.
-!      Rt0G = 0.
+      ut = 0.
       rhv = 0.
-
-!$omp parallel
-!$omp do private(nn,ncn2,j,kv,mr,mr0,mr2,sn0,sn2,dnx1,dnx2,dny1,dny2,detn,zncn,un1,un2,uu,vv)
 
       do nn=1,ne
         ncn2 = ncn -1 + min0(1,nen(nn,ncn))
@@ -1255,8 +1291,8 @@
             vv = - (dnx2*un1-dnx1*un2)*area(nn)/detn
             uc(kv,mr) = uc(kv,mr) + uu*zncn
             vc(kv,mr) = vc(kv,mr) + vv*zncn
-!            Rt0G(mr0,kv) = Rt0G(mr0,kv) - 0.5*sn0*(uu*dny1-vv*dnx1)
-!            Rt0G(mr2,kv) = Rt0G(mr2,kv) - 0.5*sn2*(uu*dny2-vv*dnx2)
+            ut(kv,mr0) = ut(kv,mr0) - 0.5*sn0*(uu*dny1-vv*dnx1)
+            ut(kv,mr2) = ut(kv,mr2) - 0.5*sn2*(uu*dny2-vv*dnx2)
           enddo
           mr0 = mr2
           dnx1 = dnx2
@@ -1264,9 +1300,6 @@
           sn0 = sn2
         enddo
       enddo
-
-!$omp end do
-!$omp do private(j)
 
       do j=1,np
         if(rhv(j).gt.0.) then !and.nbc(j).eq.0) then
@@ -1278,7 +1311,18 @@
         endif
       enddo
 
-!$omp end parallel
+       do j=1,nsides
+         if(iside(2,j).gt.ne) then !openbc
+           ut(:,j)  = 0.
+         elseif(iside(2,j).eq.0) then !land bcs         
+           areasum = area(iside(1,j))
+           ut(:,j)  = ut(:,j)/areasum
+         else
+           areasum = area(iside(1,j)) + area(iside(2,j))
+           ut(:,j)  = ut(:,j)/areasum
+         endif
+       enddo
+
 
       return
       end
