@@ -1,0 +1,4 @@
+#!/bin/sh
+# build RCM2Tecplot - compile and link
+pgf90 -r8 -C -g -traceback ../src/RCMavg2Tecplot.f90 -o ../../bin/RCMavg2Tec-pgfdbg
+rm *.mod

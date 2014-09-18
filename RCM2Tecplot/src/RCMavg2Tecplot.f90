@@ -13,6 +13,7 @@
       integer, allocatable :: nen(:,:),numsideT(:,:),iside(:,:)
       integer, allocatable :: iends(:,:)
       real ::  TET
+      real,parameter :: depmin=0.01
       real, allocatable ::  xp(:),yp(:),zp(:),zdep(:),area(:)
       real, allocatable ::  eta(:),un(:,:),ut(:,:),wz(:,:)
       real, allocatable ::  uc(:,:),vc(:,:),spd(:,:),spdcc(:,:)
@@ -230,7 +231,6 @@
       implicit none
       
       integer, parameter :: ndf0=0
-      real,parameter :: depmin=0.01
       integer :: noptcount=0, istat, n23, npv0,npvgrd
       integer :: j,js,k,kk,kv,kmin,n1,n2,nn,ncn2,nentmp,mr,mr0,mr2,npvm,nps
       integer :: nex,ntypex,npx,nprx,ncnx,nenx,iex,js2,jn
@@ -532,7 +532,7 @@
             gamma = 0.
             do nn=1,ne
               ncn2 = ncn -1 + min0(1,nen(nn,ncn))
-              deptest = amax1(sdep(numsideT(1,nn)),sdep(numsideT(2,nn)),sdep(numsideT(3,nn)),sdep(numsideT(ncn2,nn)))
+              deptest = max(sdep(numsideT(1,nn)),sdep(numsideT(2,nn)),sdep(numsideT(3,nn)),sdep(numsideT(ncn2,nn)))
               if(deptest.le.depmin) cycle
               zncn = 1./float(ncn2)
               DO J=1,ncn2
@@ -545,7 +545,7 @@
 !              if(nbc(j).lt.0) then
 !                rhv(j) = spec(-nbc(j))
 !              elseif(gamma(j).gt.0) then
-              if(gamma(j).gt.0) then
+              if(gamma(j).gt.0.) then
                 rhv(j) = rhv(j)/gamma(j)
               else
                 rhv(j) = zp(j)
@@ -554,10 +554,8 @@
                        
             if(npv.gt.1) then
               if(izcoord.eq.0) then
-!                write(22,'(6(1x,e14.6))') ((rhv(j)+(rhv(j)-zp(j))*zdep(k),j=1,np),k=1,npvgrd), &
-!                         ((sdep(j)+sbot(j)+sdep(j)*zdep(k),j=1,nsides),k=1,npv) !z
-                write(22,'(6(1x,e14.6))') (((-zp(j)*zdep(k)),j=1,np),k=1,npvgrd), &
-                         (((-sbot(j)*zdep(k)),j=1,nsides),k=1,npv) !z
+                write(22,'(6(1x,e14.6))') (((rhv(j)+(rhv(j)-zp(j))*zdep(k)),j=1,np),k=1,npvgrd), &
+                         ((sdep(j)+sbot(j)+sdep(j)*0.5*(zdep(k)+zdep(k+1)),j=1,nsides),k=1,npv) !z
               elseif(izcoord.eq.1) then
                 do k=1,izgrid-1
 !                  write(22,'(6(1x,e14.6))') (-amax1(zp(j),zdep(izgrid))*zdep(k),j=1,np),&
@@ -568,8 +566,8 @@
 !                             (amax1(sbot(j),zdep(k)),j=1,nsides) !z
                 enddo
               elseif(izcoord.eq.2) then
-                write(22,'(6(1x,e14.6))') (((-zp(j)*zdep(k)),j=1,np),k=1,npvgrd), &
-                         ((-sbot(j)*0.5*(zdep(k)+zdep(k+1)),j=1,nsides),k=1,npv) !z
+                write(22,'(6(1x,e14.6))') (((rhv(j)+(rhv(j)-zp(j))*zdep(k)),j=1,np),k=1,npvgrd), &
+                         ((sdep(j)+sbot(j)+sdep(j)*0.5*(zdep(k)+zdep(k+1)),j=1,nsides),k=1,npv) !z
               elseif(izcoord.eq.3) then
               elseif(izcoord.eq.4) then
               endif
@@ -647,7 +645,7 @@
             endif
 
           else 
-          ! append file
+! append file
             write(22,"('ZONE D=(1,2,FECONNECT)')" ) 
 
 !            if(npv.gt.1) then
@@ -699,7 +697,7 @@
             gamma = 0.
             do nn=1,ne
               ncn2 = ncn -1 + min0(1,nen(nn,ncn))
-              deptest = amax1(sdep(numsideT(1,nn)),sdep(numsideT(2,nn)),sdep(numsideT(3,nn)),sdep(numsideT(ncn2,nn)))
+              deptest = max(sdep(numsideT(1,nn)),sdep(numsideT(2,nn)),sdep(numsideT(3,nn)),sdep(numsideT(ncn2,nn)))
               if(deptest.le.depmin) cycle
               zncn = 1./float(ncn2)
               DO J=1,ncn2
@@ -711,7 +709,7 @@
             do j=1,np
 !              if(nbc(j).lt.0) then
 !                rhv(j) = spec(-nbc(j))
-              if(gamma(j).gt.0) then
+              if(gamma(j).gt.0.) then
                 rhv(j) = rhv(j)/gamma(j)
               else
                 rhv(j) = zp(j)
@@ -720,10 +718,8 @@
                        
             if(npv.gt.1) then
               if(izcoord.eq.0) then
-!                write(22,'(6(1x,e14.6))') ((rhv(j)+(rhv(j)-zp(j))*zdep(k),j=1,np),k=1,npvgrd), &
-!                         ((sdep(j)+sbot(j)+sdep(j)*zdep(k),j=1,nsides),k=1,npv) !z
-                write(22,'(6(1x,e14.6))') (((-zp(j)*zdep(k)),j=1,np),k=1,npvgrd), &
-                         (((-sbot(j)*zdep(k)),j=1,nsides),k=1,npv) !z
+                write(22,'(6(1x,e14.6))') (((rhv(j)+(rhv(j)-zp(j))*zdep(k)),j=1,np),k=1,npvgrd), &
+                         ((sdep(j)+sbot(j)+sdep(j)*0.5*(zdep(k)+zdep(k+1)),j=1,nsides),k=1,npv) !z
               elseif(izcoord.eq.1) then
                 do k=1,izgrid-1
 !                  write(22,'(6(1x,e14.6))') (-amax1(zp(j),zdep(izgrid))*zdep(k),j=1,np),&
@@ -734,10 +730,8 @@
 !                             (amax1(sbot(j),zdep(k)),j=1,nsides) !z
                 enddo
               elseif(izcoord.eq.2) then
-!                write(22,'(6(1x,e14.6))') ((rhv(j)+(rhv(j)-zp(j))*zdep(k),j=1,np),k=1,npvgrd), &
-!                         ((sdep(j)+sbot(j)+sdep(j)*0.5*(zdep(k)+zdep(k+1)),j=1,nsides),k=1,npv) !z
-                write(22,'(6(1x,e14.6))') (((-zp(j)*zdep(k)),j=1,np),k=1,npvgrd), &
-                         (((-sbot(j)*(zdep(k)+zdep(k+1))),j=1,nsides),k=1,npv) !z
+                write(22,'(6(1x,e14.6))') (((rhv(j)+(rhv(j)-zp(j))*zdep(k)),j=1,np),k=1,npvgrd), &
+                         ((sdep(j)+sbot(j)+sdep(j)*0.5*(zdep(k)+zdep(k+1)),j=1,nsides),k=1,npv) !z
               elseif(izcoord.eq.3) then
               elseif(izcoord.eq.4) then
               endif
@@ -906,7 +900,7 @@
             if(n2.eq.0) then
               etaside = eta(n1)
             else
-              etaside = amax1(eta(n1),eta(n2))
+              etaside = max(eta(n1),eta(n2))
             endif
 
             if(izcoord.eq.0) then ! sigma
@@ -1142,29 +1136,29 @@
 !   set sdep
 
 !   Get new ones
-      do j=1,ne
+      do j=1,nsides
         n1 = iside(1,j)
         n2 = iside(2,j)
 
         if(n2.le.0.or.n2.gt.ne) then
           etaside = eta(n1)
         else
-          etaside = amax1(eta(n1),eta(n2))
+          etaside = max(eta(n1),eta(n2))
         endif
         
-!        zmax = amax1(zp(iends(1,j)),zp(iends(2,j)))
-!        zmin = amin1(zp(iends(1,j)),zp(iends(2,j)))
+        zmax = max(zp(iends(1,j)),zp(iends(2,j)))
+        zmin = min(zp(iends(1,j)),zp(iends(2,j)))
 
-!        if(etaside.ge.zmax) then
-!          depth = etaside - 0.5*(zmax+zmin)  !refdep(j)
-!        elseif(etaside.gt.zmin) then
-!          depth = 0.5*(etaside-zmin)**2/(zmax-zmin)
-          depth = etaside - sbot(j)  !force old method
-!        else
-!          depth = 0.
-!        endif
+        if(etaside.ge.zmax) then
+          depth = etaside - 0.5*(zmax+zmin)  !refdep(j)
+        elseif(etaside.gt.zmin) then
+          depth = 0.5*(etaside-zmin)**2/(zmax-zmin)
+!          depth = etaside - sbot(j)  !force old method
+        else
+          depth = 0.
+        endif
         
-        if(depth.gt.0) then !depmin) then
+        if(depth.gt.depmin) then
           sdep(j) = depth
         else
           sdep(j) = 0.
@@ -1229,7 +1223,7 @@
         ncn2 = ncn -1 + min0(1,nen(L,ncn))
         DO M=1,ncn2
           idxside = numsideT(M,L)
-          if(iside(1,idxside).eq.0) then
+          if(iends(1,idxside).eq.0) then
 !            iside(1,idxside) = L
             N1=NEN(L,M)
             N2=NEN(L,mod(M,ncn2)+1)

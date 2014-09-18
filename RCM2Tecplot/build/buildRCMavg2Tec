@@ -1,3 +1,0 @@
-#!/bin/sh
-# build RCM2Tecplot - compile and link
-ifort -r8 ../src-avg/*.f90 -o ../../bin/RCMavg2Tec
