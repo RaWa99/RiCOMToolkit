@@ -33,30 +33,63 @@
       implicit none
 
       integer :: i,ii,j,jj,k,kv,it, noptcount, istat,npvgrd,istart,istop
+      integer numarg, iargc
       real ::  fcount,fcountcc,ub,vb,spd1,spd2 
       character*256 fnamedata
+      character(len=256) arg
       character(18) :: AnalysisTime
 
 !     read time slices from the binary data file
+      numarg=iargc()
 
-      write(*,*) ' Enter filename for input RiCOM binary file'
-      read(*,'(a)') fnamedata
+      if(numarg.ge.1) then
+        i = 1
+        call getarg(i,arg)
+        fnamedata = arg
+      else
+        write(*,*) ' Enter filename for input RiCOM binary file'
+        read(*,'(a)') fnamedata
+      endif
       open(unit=20,file=fnamedata,status='old',form='unformatted')
 
-      write(*,*) ' Enter izcoord'
-      read(*,*) izcoord
+!      write(*,*) ' Enter izcoord'
+!      read(*,*) izcoord
 
-      write(*,*) ' Enter time slice start index'
-      read(*,*) istart
+      if(numarg.ge.2) then
+        i = 2
+        call getarg(i,arg)
+        read(arg,*) istart
+      else
+        write(*,*) ' Enter time slice start index'
+        read(*,*) istart
+      endif
 
-      write(*,*) ' Enter time slice end index'
-      read(*,*) istop
+      if(numarg.ge.3) then
+        i = 3
+        call getarg(i,arg)
+        read(arg,*) istop
+      else
+        write(*,*) ' Enter time slice end index'
+        read(*,*) istop
+      endif
 
-      write(*,*) ' Enter output option'
-      read(*,*) nopt
+      if(numarg.ge.4) then
+        i = 4
+        call getarg(i,arg)
+        read(arg,*) nopt
+      else
+        write(*,*) ' Enter output option'
+        read(*,*) nopt
+      endif
 
-      write(*,*) ' Enter filename for output Tecplot ascii file'
-      read(*,'(a)') OutResFile
+      if(numarg.ge.5) then
+        i = 5
+        call getarg(i,arg)
+        OutResFile = arg
+      else
+        write(*,*) ' Enter filename for output Tecplot ascii file'
+        read(*,'(a)') OutResFile
+      endif
       
       read(20) AnalysisTime
       write(*,*) 'AnalysisTime= ',AnalysisTime
