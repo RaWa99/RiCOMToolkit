@@ -51,9 +51,6 @@
       endif
       open(unit=20,file=fnamedata,status='old',form='unformatted')
 
-!      write(*,*) ' Enter izcoord'
-!      read(*,*) izcoord
-
       if(numarg.ge.2) then
         i = 2
         call getarg(i,arg)

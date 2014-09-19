@@ -8,11 +8,12 @@
       integer :: nson,nsed,nsol,iOPsol
       integer :: neqtide=0, neMB=0, nsbc
       integer :: nopt
-      integer :: izcoord=2,izgrid=0
+      integer :: izcoord=2,izgrid=0,ixycoord
       integer :: jUprofile=0,jCprofile=0, jSprofile=0
       integer, allocatable :: nen(:,:),numsideT(:,:),iside(:,:)
       integer, allocatable :: iends(:,:)
       real ::  TET
+      real*8 :: x0off,y0off
       real,parameter :: depmin=0.01
       real, allocatable ::  xp(:),yp(:),zp(:),zdep(:),area(:)
       real, allocatable ::  eta(:),un(:,:),ut(:,:),wz(:,:)
@@ -51,9 +52,6 @@
         read(*,'(a)') fnamedata
       endif
       open(unit=20,file=fnamedata,status='old',form='unformatted')
-
-!      write(*,*) ' Enter izcoord'
-!      read(*,*) izcoord
 
       if(numarg.ge.2) then
         i = 2
@@ -95,7 +93,7 @@
       write(*,*) 'AnalysisTime= ',AnalysisTime
       read(20)  !skip windfilename
 
-      read(20) ne,np,nsides,npv,ncn
+      read(20) ne,np,nsides,npv,ncn,izcoord,izgrid,ixycoord,x0off,y0off
       read(20) nson,nsed,nsol,neMB,neqtide
 
       npv = max(npv,1)
