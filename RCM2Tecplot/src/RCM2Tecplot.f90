@@ -220,6 +220,8 @@
       integer :: noptcount=0, istat, n23, npv0,npvgrd
       integer :: j,js,k,kk,kv,kmin,n1,n2,nn,ncn2,nentmp,mr,mr0,mr2,npvm,nps
       integer :: nex,ntypex,npx,nprx,ncnx,nenx,iex,js2,jn
+      integer, allocatable, save :: tsUnodes(:)
+      logical :: firsttime=.true.
       real :: cdep, zz(100), etaside,speed,topomin,deptest,zero,zncn,zlev
       real :: sn0,sn2,DNX1,DNY1,DNX2,DNY2,detn,un1,un2,uu,vv,u,v,w
       real :: bigrI,bigrcI,x00,y00,xc,yc,zc,depth,depdif,zbot
@@ -867,10 +869,23 @@
         close(22)
 
         if(npv.gt.1) then
-          ! first time through start new file
+          if(firsttime) then
+            firsttime = .false.
+            write(*,*) 'Enter number of velocity profiles to plot'
+            read(*,*) jUprofile
+            ALLOCATE ( tsUnodes(jUprofile), STAT = istat )
+            if(istat.ne.0) then
+              write(*,*) 'FATAL ERROR: Cannot allocate tsUnodes vector',istat
+              stop
+            endif
+            if(jUprofile.gt.0) then
+              write(*,*) 'Enter ',jUprofile,' element numbers for velocity profiles'
+              read(*,*) (tsUnodes(j),j=1,jUprofile)
+            endif
+          endif
           do j=1,jUprofile
 
-            js = numsideT(1,1)  !tsUnodes(j))
+            js = numsideT(1,tsUnodes(j))
             if(js.eq.0) cycle
 
             npv0 = npv
@@ -884,30 +899,32 @@
 
             if(izcoord.eq.0) then ! sigma
               do k=1,npv
-!                zz(k) = etaside + sdep(js)*zdep(k)
+                zz(k) = sbot(js) + sdep(js)*(1.+ zdep(k))
               enddo
             elseif(izcoord.eq.1) then  ! sigma on z
-              depdif = etaside - zdep(izgrid)
-              do k=1,izgrid-1
-                zz(k) = depdif*(1.+zdep(k)) + zdep(izgrid)
-              enddo
-              zbot = etaside-sdep(js)
-              do k=izgrid,npv
-                if(zbot.ge.zdep(k)) then
-                  zz(k) = zbot
-                  npv0 = k
-                  exit
-                else
-                  zz(k) = zdep(k)
-                endif
-              enddo        
+!              depdif = etaside - zdep(izgrid)
+!              do k=1,izgrid-1
+!                zz(k) = depdif*(1.+zdep(k)) + zdep(izgrid)
+!              enddo
+!              zbot = etaside-sdep(js)
+!              do k=izgrid,npv
+!                if(zbot.ge.zdep(k)) then
+!                  zz(k) = zbot
+!                  npv0 = k
+!                  exit
+!                else
+!                  zz(k) = zdep(k)
+!                endif
+!              enddo        
             elseif(izcoord.eq.2) then ! sigma layers
               do k=1,npv
                 zz(k) = sbot(js) + sdep(js)*(1.+ 0.5*(zdep(k)+zdep(k+1))) !ref to MSL
               enddo
+            elseif(izcoord.eq.3) then ! sigma on z layers
             endif
 
             if (noptcount.eq.0) then
+          ! first time through start new file
               n23 = 23  !+j-1
               write(cseq,"(I2.2)") j
               open(unit=n23,file='profile'//trim(cseq)//'.dat',status='unknown')
