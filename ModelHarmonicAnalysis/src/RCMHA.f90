@@ -15,7 +15,7 @@
       integer :: ntime,nskip,nskip1,nc,ninf,ihr0,nprof,np,npv, nson,nsed,nsol
       integer :: nlev, npvx, nfile, ncon, ncon2, nph, nphu,ndf,kkount,infz,nii
       integer :: iex,nex,ntypex,npx,nprx,node,nentmp
-      integer :: ne,nnodes,nsides,ncn,izcoord,npvgrd
+      integer :: ne,nnodes,nsides,ncn,izcoord,npvgrd,neMB,neqtide
       real*8 tet, arg
       real a(400)  !,rhs(ncon2),rhu(ncon2),rhv(ncon2)
       real :: x,y,ab,ba1,wj,wk,wd,ws,sind,sins,td,ts,gg,errz0,aa,pp
@@ -133,8 +133,8 @@
       write(*,*) 'AnalysisTime= ',AnalysisTime
       read(20)  !skip windfilename
 
-      read(20) ne,nnodes,nsides,npv,ncn   !nph,nphu,npv  
-      read(20) nson,nsed,nsol
+      read(20) ne,nnodes,nsides,npv,ncn,izcoord   !nph,nphu,npv  
+      read(20) nson,nsed,nsol,neMB,neqtide
       nph = ne
       nphu = nsides
       npv = max(npv,1)
@@ -166,7 +166,7 @@
       read(20) (zp(j),j=1,nnodes)
     
       if(npv.gt.1) then
-        npvgrd = npv   !+ min(1,max(0,izcoord-1))
+        npvgrd = npv + min(1,max(0,izcoord-1))
         ALLOCATE ( zdep(npvgrd), STAT = istat )
         if(istat.ne.0) then
           write(*,*) 'FATAL ERROR: Cannot allocate zdep',istat
@@ -231,6 +231,9 @@
           if(nsol.gt.0) then
             read(20)
           endif
+          if(neqtide.gt.0) then
+            read(20)
+          endif
        enddo
       endif
 
@@ -263,6 +266,9 @@
           read(20)
         endif
          if(nsol.gt.0) then
+          read(20)
+        endif
+        if(neqtide.gt.0) then
           read(20)
         endif
         
@@ -575,6 +581,9 @@
           if(nsol.gt.0) then
             read(20)
           endif
+          if(neqtide.gt.0) then
+            read(20)
+          endif
         enddo
       endif
 
@@ -608,6 +617,9 @@
           read(20)
         endif
         if(nsol.gt.0) then
+          read(20)
+        endif
+        if(neqtide.gt.0) then
           read(20)
         endif
 
