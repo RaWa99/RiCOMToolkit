@@ -1,3 +1,0 @@
-#!/bin/sh
-# build ModelHA - compile and link
-ifort -r8 ../src-modHA/*.f90 -o ../../bin/modelHA

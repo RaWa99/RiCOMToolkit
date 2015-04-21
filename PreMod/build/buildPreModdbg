@@ -1,8 +1,0 @@
-#!/bin/sh
-# build PreMod - compile and link
-ifort -c -r8 -check bounds -check uninit -traceback ../src/PreMod.f90
-ifort -c -r8 -check bounds -check uninit -traceback ../src/OpenFileCMD.f90 
-ifort -c -r8 -check bounds -check uninit -traceback ../src/NullOutputnetCDF.f90
-ifort *.o -check bounds -check uninit -traceback -o ../../bin/premod5dbg
-rm *.o
-
