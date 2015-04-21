@@ -1,0 +1,4 @@
+#!/bin/sh
+# build ModelHA - compile and link
+mkdir -p ../../bin
+ifort -r8 -check bounds -check uninit -traceback ../src-modHA/*.f90 -o ../../bin/modelHAdbg

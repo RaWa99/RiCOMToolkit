@@ -1,0 +1,6 @@
+#!/bin/sh
+# build ModelHA - compile and link
+mkdir -p ../../bin
+pgf90 -r8  -C -g -traceback ../src/*.f90 -o ../../bin/RCMHAdbg
+rm *.o
+
