@@ -36,6 +36,7 @@
       integer :: istat,iarray
       character*4, allocatable :: name(:),namref(:),naminf(:) !  ncon)
 
+      integer numarg, iargc
       integer :: isp(50)
       character*4 icn
       character*256 fname,fnamedata
@@ -49,10 +50,22 @@
 
 !     open control file
 
-      ResOK = OpenFile(3,'Open Control File',fname,"Control file(*.dat),*.dat;All files(*.*),*.*;")
+      numarg=iargc()
+      
+      if(numarg.ge.1) then
+        i = 1
+        call getarg(i,fname)
+        open(unit=3,file=fname,status='old',iostat=istat)
+        if(istat.ne.0) then
+          write(*,*), 'Unable to open input control file'
+          stop
+        endif
+      else
+        ResOK = OpenFile(3,'Open Control File',fname,"Control file(*.dat),*.dat;All files(*.*),*.*;")
 
-      if(.not.resOK) then
-        stop
+        if(.not.resOK) then
+          stop
+        endif
       endif
 
 !     read control file
@@ -66,7 +79,7 @@
 !     ninf = number of inferred constituents
 !     nprof = 0 analyse horzontal layer
 !           = 1 analyse profiles
-!           = 2 analyse profiles and read sigma coordinates for output.
+!           = 2 analyse points and only output PEST file.
 !     np = number of profiles to analyze (or vertical level if nprof=0)
       write(*,*) ' number of hourly time steps =', ntime
       write(*,*) ' number of steps to skip initially =', nskip
@@ -83,18 +96,18 @@
           stop
         endif
         read(3,*) (npt(i),i=1,np)
-        if(nprof.eq.2) then  !read sigma data
-                ResOK = OpenFile(5,'Open sigma File',fname,"data file(*.dat),*.dat;All files(*.*),*.*;")
-          read(5,*) npvx
-          ALLOCATE (zs(npvx), STAT = istat ) 
-          if(istat.ne.0) then
-            write(*,*) 'FATAL ERROR: Cannot allocate zs storage array'
-            stop
-          endif
-          do j=1,npvx
-            read(5,*) zs(j)
-          enddo
-        endif
+!        if(nprof.eq.2) then  !read sigma data
+!                ResOK = OpenFile(5,'Open sigma File',fname,"data file(*.dat),*.dat;All files(*.*),*.*;")
+!          read(5,*) npvx
+!          ALLOCATE (zs(npvx), STAT = istat ) 
+!          if(istat.ne.0) then
+!            write(*,*) 'FATAL ERROR: Cannot allocate zs storage array'
+!            stop
+!          endif
+!          do j=1,npvx
+!            read(5,*) zs(j)
+!          enddo
+!        endif
       endif
 
       nfile=ntime
@@ -683,79 +696,102 @@
 
 !    write out the results in Tecplot format
       read(3,'(a)') fname
-      do j=1,nc
-        ia = LEN_TRIM(name(j))
-        open(unit=25,file=name(j)(1:ia)//fname,status='unknown',form='formatted')
-!        fac=3.1415926/180.
-        if(nprof.eq.0) then
-          write(25,*)  'VARIABLES= "x" "y" "z" "e" "ep" "u" "up" "v" "vp" "umaj" "umin" "ph" "dir"'
-          write(25,*) ' ZONE T="',name(j),'" '
-          write(25,"(' N=',i7,' E=',i7 )" )  nnodes,ne  !nn
-!          write(25,*)  '  F=FEPOINT ET=TRIANGLE'
-          if(ncn.eq.3) then
-            write(25,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
-          elseif(ncn.eq.4) then
-            write(25,"(' ZONETYPE=FEQUADRILATERAL DATAPACKING=BLOCK')" )
-          endif
-          write(25,"(' VARLOCATION=([4-13]=CELLCENTERED)')" )
-        else
-          write(25,*) 'VARIABLES= "s" "e" "ep" "u" "up" "v" "vp" "umaj" "umin" "ph" "dir"'
-        endif
-! ** calculate ellipse parameters
-        if(nphu.gt.0) then
-          call ellipse(nn,ampub(1,j),phub(1,j),ampvb(1,j),phvb(1,j),amaj,amin,g,ainc)
-        endif
-!        do i=1,nn
+      if(nprof.eq.0.or.nprof.eq.1) then
+        do j=1,nc
+          ia = LEN_TRIM(name(j))
+          open(unit=25,file=name(j)(1:ia)//fname,status='unknown',form='formatted')
+!          fac=3.1415926/180.
           if(nprof.eq.0) then
-!            if(npv.gt.1) then
-!              ii = mod(i-1,nph) + 1
-!              write(25,510) ampub(i,j)*cos(fac*phub(i,j)),ampvb(i,j)*cos(fac*phvb(i,j)),&
-!                               ampz(i,j)*cos(fac*phz(i,j))
-!            else
-              write(25,'(6(1x,e14.6))') (xp(i),i=1,nnodes)
-              write(25,'(6(1x,e14.6))') (yp(i),i=1,nnodes)
-              write(25,'(6(1x,e14.6))') (zp(i),i=1,nnodes)
-              write(25,'(6(1x,e14.6))') (ampz(i,j),i=1,ne)  !nn)
-              write(25,'(6(1x,e14.6))') (phz(i,j),i=1,ne)  !nn)
-              write(25,'(6(1x,e14.6))') (ampub(i,j),i=1,ne)  !nn)
-              write(25,'(6(1x,e14.6))') (phub(i,j),i=1,ne)  !nn)
-              write(25,'(6(1x,e14.6))') (ampvb(i,j),i=1,ne)  !nn)
-              write(25,'(6(1x,e14.6))') (phvb(i,j),i=1,ne)  !nn)
-              write(25,'(6(1x,e14.6))') (amaj(i),i=1,ne)  !nn)
-              write(25,'(6(1x,e14.6))') (amin(i),i=1,ne)  !nn)
-              write(25,'(6(1x,e14.6))') (g(i),i=1,ne)  !nn)
-              write(25,'(6(1x,e14.6))') (Ainc(i),i=1,ne)  !nn)
-!            endif
+            write(25,*)  'VARIABLES= "x" "y" "z" "e" "ep" "u" "up" "v" "vp" "umaj" "umin" "ph" "dir"'
+            write(25,*) ' ZONE T="',name(j),'" '
+            write(25,"(' N=',i7,' E=',i7 )" )  nnodes,ne  !nn
+!            write(25,*)  '  F=FEPOINT ET=TRIANGLE'
+            if(ncn.eq.3) then
+              write(25,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
+            elseif(ncn.eq.4) then
+              write(25,"(' ZONETYPE=FEQUADRILATERAL DATAPACKING=BLOCK')" )
+            endif
+            write(25,"(' VARLOCATION=([4-13]=CELLCENTERED)')" )
           else
-            if(mod(i,npv).eq.1) then
-              node = (i-1)/npv + 1
-              write(25,*)  ' ZONE T="',npt(node),'"'
-            endif
-            if(nprof.eq.1) then
-              dep = -float(mod(i-1,npv))
-            else
-              dep = zs(mod(i-1,npv)+1)
-            endif
-            write(25,500) dep,ampz(i,j),phz(i,j),ampub(i,j),phub(i,j),ampvb(i,j),phvb(i,j),&
-                        amaj(i),amin(i),g(i),Ainc(i)
+            write(25,*) 'VARIABLES= "s" "e" "ep" "u" "up" "v" "vp" "umaj" "umin" "ph" "dir"'
           endif
-!      enddo
+! ** calculate ellipse parameters
+          if(nphu.gt.0) then
+            call ellipse(nn,ampub(1,j),phub(1,j),ampvb(1,j),phvb(1,j),amaj,amin,g,ainc)
+          endif
+!          do i=1,nn
+          if(nprof.eq.0) then
+!              if(npv.gt.1) then
+!                ii = mod(i-1,nph) + 1
+!                write(25,510) ampub(i,j)*cos(fac*phub(i,j)),ampvb(i,j)*cos(fac*phvb(i,j)),&
+!                                 ampz(i,j)*cos(fac*phz(i,j))
+!              else
+            write(25,'(6(1x,e14.6))') (xp(i),i=1,nnodes)
+            write(25,'(6(1x,e14.6))') (yp(i),i=1,nnodes)
+            write(25,'(6(1x,e14.6))') (zp(i),i=1,nnodes)
+            write(25,'(6(1x,e14.6))') (ampz(i,j),i=1,ne)  !nn)
+            write(25,'(6(1x,e14.6))') (phz(i,j),i=1,ne)  !nn)
+            write(25,'(6(1x,e14.6))') (ampub(i,j),i=1,ne)  !nn)
+            write(25,'(6(1x,e14.6))') (phub(i,j),i=1,ne)  !nn)
+            write(25,'(6(1x,e14.6))') (ampvb(i,j),i=1,ne)  !nn)
+            write(25,'(6(1x,e14.6))') (phvb(i,j),i=1,ne)  !nn)
+            write(25,'(6(1x,e14.6))') (amaj(i),i=1,ne)  !nn)
+            write(25,'(6(1x,e14.6))') (amin(i),i=1,ne)  !nn)
+            write(25,'(6(1x,e14.6))') (g(i),i=1,ne)  !nn)
+            write(25,'(6(1x,e14.6))') (Ainc(i),i=1,ne)  !nn)
+!              endif
+          elseif(nprof.eq.1) then  !write profiles
+            do i=1,nn
+              if(mod(i,npv).eq.1) then
+                node = (i-1)/npv + 1
+                write(25,*)  ' ZONE T="',npt(node),'"'
+              endif
+!              if(nprof.eq.1) then
+                dep = -float(mod(i-1,npv))
+!              else
+!              dep = 1. !zdep(mod(i-1,npv)+1)
+!              endif
+              write(25,500) dep,ampz(i,j),phz(i,j),ampub(i,j),phub(i,j),ampvb(i,j),phvb(i,j),&
+                          amaj(i),amin(i),g(i),Ainc(i)
+            enddo
+          endif
       
-      if(nprof.eq.0) then  !.and.npv.le.1) then
-        do jj=1,ne
-          if(NEN(jj,ncn).eq.0) then
-            NENtmp = NEN(jj,ncn-1)
-          else
-            NENtmp = NEN(jj,ncn)
+          if(nprof.eq.0) then  !.and.npv.le.1) then
+            do jj=1,ne
+              if(NEN(jj,ncn).eq.0) then
+                NENtmp = NEN(jj,ncn-1)
+              else
+                NENtmp = NEN(jj,ncn)
+              endif
+              write(25,*) (NEN(jj,k),k=1,ncn) !,NENtmp
+            enddo
           endif
-          write(25,*) (NEN(jj,k),k=1,ncn) !,NENtmp
+          
+          close(unit=25)
         enddo
+      elseif(nprof.eq.2) then  !write PEST file
+! *** write amp,phase for all constituents at each point
+        open(26,file='outHAAP.dat',status='unknown',form='formatted')
+        do i=1,nn
+          if(mod(i-1,npv).eq.0) then
+            node = (i-1)/npv + 1
+            write(26,520) npt(node),((ampz(i,j),phz(i,j)),j=1,nc)
+          endif
+        enddo
+        close(26)
+! *** write real, imag amp for all constituents at each point
+        open(26,file='outHARI.dat',status='unknown',form='formatted')
+        do i=1,nn
+          if(mod(i-1,npv).eq.0) then
+            node = (i-1)/npv + 1
+            write(26,520) npt(node),((ampz(i,j),phz(i,j)),j=1,nc)
+          endif
+        enddo
+        close(26)
       endif
-      
-      close(unit=25)
-    enddo
-510 format(15(1x,1PE12.4))
 500 format(e14.7,1x,E14.7,1x,e12.5,1x,15f8.3)
+510 format(15(1x,1PE12.4))
+520 format(i8,15(1x,F7.4,1x,F7.2))
 
     stop
     end
