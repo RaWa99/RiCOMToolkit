@@ -1,0 +1,8 @@
+#!/bin/sh
+# build DecomposeGrid debug - compile and link
+pgf90 -c -r8 -C -g -traceback  ../src/mainmod.f90
+pgf90 -c -r8 -C -g -traceback  ../src/OpenFileCMD.f90
+pgf90 -c -r8 -C -g -traceback  ../src/DecomposeGrid.f90
+pgf90 *.o    -C -g -traceback  -o ../../bin/decomposegrid-pgfdbg -L../lib -lmetis
+rm *.o
+rm *.mod

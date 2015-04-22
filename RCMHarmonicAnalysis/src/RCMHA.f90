@@ -679,7 +679,7 @@
 
 
 !    real lel file for coordinates
-      read(3,'(a)') fname
+!      read(3,'(a)') fname
 !      open(unit=25,file=fname,status='old',form='unformatted')
 !      READ (25) NEx,NTYPEx,NPx,NPRx,NCNx
 ! *** allocate arrays
@@ -771,7 +771,8 @@
         enddo
       elseif(nprof.eq.2) then  !write PEST file
 ! *** write amp,phase for all constituents at each point
-        open(26,file='outHAAP.dat',status='unknown',form='formatted')
+!        open(26,file='outHAAP.dat',status='unknown',form='formatted')
+        open(26,file=fname,status='unknown',form='formatted')
         do i=1,nn
           if(mod(i-1,npv).eq.0) then
             node = (i-1)/npv + 1
