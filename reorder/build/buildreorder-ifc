@@ -1,3 +1,4 @@
 #!/bin/sh
 # build reorder - compile and link
+mkdir -p ../../bin
 ifort  ../src/Reorder03-4-15.for ../src/OpenFileCMD.f90 -o ../../bin/reorder

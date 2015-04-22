@@ -1,3 +1,4 @@
 #!/bin/sh
 # build ScatterGrid - compile and link
+mkdir -p ../../bin
 ifort -r8 -check bounds -check uninit -traceback  ../src/*.f90 -o ../../bin/decomposegriddbg -L../lib -lmetis

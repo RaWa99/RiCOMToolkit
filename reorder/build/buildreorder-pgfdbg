@@ -2,5 +2,6 @@
 # build reorder - compile and link
 pgf90 -c -r8 -C -g -traceback  ../src/Reorder03-4-15.for
 pgf90 -c -r8 -C -g -traceback  ../src/OpenFileCMD.f90
+mkdir -p ../../bin
 pgf90 *.o    -C -g -traceback  -o ../../bin/reorder-pgfdbg
 rm *.o

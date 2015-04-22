@@ -1,3 +1,4 @@
 #!/bin/sh
 # build ScatterGrid - compile and link
+mkdir -p ../../bin
 ifort -r8 ../src/*.f90 -o ../../bin/decomposegrid -L../lib -lmetis
