@@ -1,5 +1,5 @@
 
-      Program modelprofileHA
+      Program RiCOMHarmonicAnalysis
 
 !     This version of the tidal heights analysis program has
 !     been adapted for the analysis of hourly output from
@@ -36,7 +36,9 @@
       integer :: istat,iarray
       character*4, allocatable :: name(:),namref(:),naminf(:) !  ncon)
 
-      integer numarg, iargc
+      integer :: numarg, iargc, nconx=20
+      real*8 :: fnx(20),nux(20),freqx(20)
+!      character*4 :: namex(20)
       integer :: isp(50)
       character*4 icn
       character*256 fname,fnamedata
@@ -144,6 +146,15 @@
       
       read(20) AnalysisTime
       write(*,*) 'AnalysisTime= ',AnalysisTime
+      
+! *** convert phases for the start of the time series for known constituents
+      call ConvertPhases(AnalysisTime,ncon,f,vpu,name,freq)
+      
+! *** convert phases for the start of the time series for known inf constituents
+      if(ninf.gt.0) then
+        call ConvertPhases(AnalysisTime,ninf,finf,vpuinf,naminf,freqinf)
+      endif
+      
       read(20)  !skip windfilename
 
       read(20) ne,nnodes,nsides,npv,ncn,izcoord   !nph,nphu,npv  
@@ -469,7 +480,10 @@
           infz=0
           if(ninf.gt.0) then
             do k=1,ninf
-              if(name(j).eq.namref(k)) infz = 1
+              if(name(j).eq.namref(k)) then
+                infz = 1
+                freqref(k) = freq(j)
+              endif
             end do
           endif
 
