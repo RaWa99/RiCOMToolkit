@@ -246,6 +246,9 @@
           if(npv.gt.1) then
             read(20)    
           endif
+          if(k.gt.1.and.neMB.gt.0) then
+            read(20)    
+          endif
           if(nson.gt.0) then
             read(20)
           endif
@@ -283,6 +286,9 @@
         enddo
         ubar = ubar/float(ncn)
         vbar = vbar/float(ncn)
+        if(k.gt.1.and.neMB.gt.0) then
+          read(20)    
+        endif
         if(nson.gt.0) then
           read(20)
         endif
@@ -596,6 +602,9 @@
           read(20)  !eta
           read(20)  !u
           read(20)  !v
+          if(k.gt.1.and.neMB.gt.0) then
+            read(20)  !z moving    
+          endif
           if(npv.gt.1) then
             read(20) !w
           endif
@@ -637,6 +646,9 @@
         enddo
         ubar = ubar/float(ncn)
         vbar = vbar/float(ncn)
+        if(k.gt.1.and.neMB.gt.0) then
+          read(20)  !z moving    
+        endif
         if(nson.gt.0) then
           read(20)
         endif
