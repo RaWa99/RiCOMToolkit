@@ -1,0 +1,9 @@
+#!/bin/sh
+# build netcdfiodriver - compile and link
+export LD_LIBRARY_PATH=/usr/local/lib64
+gfortran -c -g -O2 -Wall -fcheck=bounds -fbacktrace -I/usr/local/include ../src/UGrid_write_netCDF.f90
+gfortran -c -g -O2 -fdefault-real-8 -fdefault-double-8 -Wall -fcheck=bounds -fbacktrace ../src/MainArrays.f90
+gfortran -c -g -O2 -fdefault-real-8 -fdefault-double-8 -Wall -fcheck=bounds -fbacktrace ../src/RCM2netCDF.f90
+gfortran -g -O2 -fcheck=bounds -fbacktrace *.o  -lnetcdff  -lnetcdf -lnetcdf -o ../../bin/RCM2netCDF-gfdbg
+rm *.o
+rm *.mod
