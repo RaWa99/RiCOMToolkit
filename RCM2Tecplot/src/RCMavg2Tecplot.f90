@@ -6,7 +6,7 @@
 
       integer :: ne,np,nsides,npv,ncn,npvc=1   !nph,nphu,npv  
       integer :: nson,nsed,nsol,iOPsol
-      integer :: neqtide=0, neMB=0, nsbc
+      integer :: neqtide=0, neMB=0, nsbc, iOPsol=0
       integer :: nopt
       integer :: izcoord=2,izgrid=0,ixycoord
       integer :: jUprofile=0,jCprofile=0, jSprofile=0
@@ -155,6 +155,8 @@
         endif
         if(nsol.gt.0.and.istat.eq.0) then
           read(20, IOSTAT=istat)
+          if(iOPsol.gt.0) read(20)
+          if(iOPsol.gt.2) read(20)            
         endif
         if(istat.ne.0) then
           write(*,*) ' Error reading input file at time=', TET
@@ -217,6 +219,8 @@
         endif
         if(nsol.gt.0.and.istat.eq.0) then
           read(20, IOSTAT=istat)
+          if(iOPsol.gt.0) read(20)
+          if(iOPsol.gt.2) read(20)            
         endif
         if(istat.ne.0) then
           write(*,*) ' Error reading input file at time=', TET

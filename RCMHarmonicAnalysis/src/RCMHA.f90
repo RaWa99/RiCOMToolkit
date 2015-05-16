@@ -15,7 +15,7 @@
       integer :: ntime,nskip,nskip1,nc,ninf,ihr0,nprof,np,npv, nson,nsed,nsol
       integer :: nlev, npvx, nfile, ncon, ncon2, nph, nphu,ndf,kkount,infz,nii
       integer :: iex,nex,ntypex,npx,nprx,node,nentmp
-      integer :: ne,nnodes,nsides,ncn,izcoord,npvgrd,neMB,neqtide
+      integer :: ne,nnodes,nsides,ncn,izcoord,npvgrd,neMB,neqtide,iOPsol
       real*8 tet, arg
       real a(400)  !,rhs(ncon2),rhu(ncon2),rhv(ncon2)
       real :: x,y,ab,ba1,wj,wk,wd,ws,sind,sins,td,ts,gg,errz0,aa,pp
@@ -158,7 +158,7 @@
       read(20)  !skip windfilename
 
       read(20) ne,nnodes,nsides,npv,ncn,izcoord   !nph,nphu,npv  
-      read(20) nson,nsed,nsol,neMB,neqtide
+      read(20) nson,nsed,nsol,neMB,neqtide,iOPsol
       nph = ne
       nphu = nsides
       npv = max(npv,1)
@@ -257,6 +257,8 @@
           endif
           if(nsol.gt.0) then
             read(20)
+            if(iOPsol.gt.0) read(20)
+            if(iOPsol.gt.2) read(20)            
           endif
           if(neqtide.gt.0) then
             read(20)
@@ -295,8 +297,10 @@
         if(nsed.gt.0) then
           read(20)
         endif
-         if(nsol.gt.0) then
+        if(nsol.gt.0) then
           read(20)
+          if(iOPsol.gt.0) read(20)
+          if(iOPsol.gt.2) read(20)            
         endif
         if(neqtide.gt.0) then
           read(20)
@@ -616,6 +620,8 @@
           endif
           if(nsol.gt.0) then
             read(20)
+            if(iOPsol.gt.0) read(20)
+            if(iOPsol.gt.2) read(20)            
           endif
           if(neqtide.gt.0) then
             read(20)
@@ -657,6 +663,8 @@
         endif
         if(nsol.gt.0) then
           read(20)
+          if(iOPsol.gt.0) read(20)
+          if(iOPsol.gt.2) read(20)            
         endif
         if(neqtide.gt.0) then
           read(20)
