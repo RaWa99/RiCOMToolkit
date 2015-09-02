@@ -5,7 +5,7 @@
       implicit none
 
       integer :: ne,np,nsides,npv,ncn,npvc=1   !nph,nphu,npv  
-      integer :: nson,nsed,nsol,iOPsol
+      integer :: nson,nsed,nsol
       integer :: neqtide=0, neMB=0, nsbc, iOPsol=0
       integer :: nopt
       integer :: izcoord=2,izgrid=0,ixycoord
@@ -16,7 +16,7 @@
       real*8 :: x0off,y0off
       real,parameter :: depmin=0.01
       real, allocatable ::  xp(:),yp(:),zp(:),zdep(:),area(:)
-      real, allocatable ::  eta(:),un(:,:),ut(:,:),wz(:,:)
+      real, allocatable ::  eta(:),un(:,:),ut(:,:),wz(:,:),eqtide(:)
       real, allocatable ::  uc(:,:),vc(:,:),spd(:,:),spdcc(:,:)
       real, allocatable ::  spd2d(:),spd2dcc(:)
       real, allocatable ::  sxy(:,:),sbot(:),sdx(:),sdy(:),sdep(:)
@@ -94,7 +94,7 @@
       read(20)  !skip windfilename
 
       read(20) ne,np,nsides,npv,ncn,izcoord,izgrid,ixycoord,x0off,y0off
-      read(20) nson,nsed,nsol,neMB,neqtide
+      read(20) nson,nsed,nsol,neMB,neqtide,iOPsol
 
       npv = max(npv,1)
 
@@ -106,7 +106,7 @@
           sxy(2,nsides),sbot(nsides),sdx(nsides),sdy(nsides), &
           numsideT(ncn,ne),iside(2,nsides),area(ne),iends(2,nsides), &
           uc(npvgrd,np),vc(npvgrd,np),zdep(npvgrd),rhv(nsides),gamma(nsides),sdep(nsides), &
-          eta(ne),un(npv,nsides),ut(npv,nsides),wz(npv,ne), &
+          eta(ne),un(npv,nsides),ut(npv,nsides),wz(npv,ne),eqtide(ne), &
           spd(npvgrd,np),spdcc(npvgrd-1,ne),spd2d(np),spd2dcc(ne), STAT = istat )
       if(istat.ne.0) then
         write(*,*) 'FATAL ERROR: Cannot allocate ncon main storage arrays',istat
@@ -157,6 +157,9 @@
           read(20, IOSTAT=istat)
           if(iOPsol.gt.0) read(20)
           if(iOPsol.gt.2) read(20)            
+        endif
+        if(neqtide.gt.0) then  ! equilibrium tide results
+          read(20, IOSTAT=istat) 
         endif
         if(istat.ne.0) then
           write(*,*) ' Error reading input file at time=', TET
@@ -221,6 +224,9 @@
           read(20, IOSTAT=istat)
           if(iOPsol.gt.0) read(20)
           if(iOPsol.gt.2) read(20)            
+        endif
+        if(neqtide.gt.0) then  ! equilibrium tide results
+          read(20, IOSTAT=istat) (eqtide(j),j=1,ne)
         endif
         if(istat.ne.0) then
           write(*,*) ' Error reading input file at time=', TET
@@ -376,7 +382,7 @@
               endif
             endif
             if(neqtide.gt.0) then
-!                write(22,'(6(1x,e14.6))') (eqtide(j),j=1,ne)
+              write(22,'(6(1x,e14.6))') (eqtide(j),j=1,ne)
             endif
 
             do j=1,ne

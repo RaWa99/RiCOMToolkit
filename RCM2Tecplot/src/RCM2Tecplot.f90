@@ -5,7 +5,7 @@
       implicit none
 
       integer :: ne,np,nsides,npv,ncn,npvc=1   !nph,nphu,npv  
-      integer :: nson,nsed,nsol,iOPsol
+      integer :: nson,nsed,nsol
       integer :: neqtide=0, neMB=0, nsbc, iOPsol=0
       integer :: nopt
       integer :: izcoord=2,izgrid=0,ixycoord
@@ -17,7 +17,7 @@
       real,parameter :: depmin=0.01
       real, allocatable ::  xp(:),yp(:),zp(:),zdep(:),area(:)
       real, allocatable ::  eta(:),un(:,:),ut(:,:),wz(:,:)
-      real, allocatable ::  uc(:,:),vc(:,:)
+      real, allocatable ::  uc(:,:),vc(:,:),eqtide(:)
       real, allocatable ::  sxy(:,:),sbot(:),sdx(:),sdy(:),sdep(:)
       real, allocatable ::  rhv(:),gamma(:) !scratch vectors
       character*256 OutResFile
@@ -104,7 +104,7 @@
           sxy(2,nsides),sbot(nsides),sdx(nsides),sdy(nsides), &
           numsideT(ncn,ne),iside(2,nsides),area(ne),iends(2,nsides), &
           uc(npvgrd,np),vc(npvgrd,np),zdep(npvgrd),rhv(nsides),gamma(nsides),sdep(nsides), &
-          eta(ne),un(npv,nsides),ut(npv,nsides),wz(npv,ne), STAT = istat )
+          eta(ne),un(npv,nsides),ut(npv,nsides),wz(npv,ne), eqtide(ne), STAT = istat )
       if(istat.ne.0) then
         write(*,*) 'FATAL ERROR: Cannot allocate ncon main storage arrays',istat
         stop
@@ -155,6 +155,9 @@
           if(iOPsol.gt.0) read(20)
           if(iOPsol.gt.2) read(20)            
         endif
+        if(neqtide.gt.0) then  ! equilibrium tide results
+          read(20, IOSTAT=istat) 
+        endif
         if(istat.ne.0) then
           write(*,*) ' Error reading input file at time=', TET
           exit
@@ -194,6 +197,9 @@
           read(20, IOSTAT=istat)
           if(iOPsol.gt.0) read(20)
           if(iOPsol.gt.2) read(20)            
+        endif
+        if(neqtide.gt.0) then  ! equilibrium tide results
+          read(20, IOSTAT=istat) (eqtide(j),j=1,ne)
         endif
         if(istat.ne.0) then
           write(*,*) ' Error reading input file at time=', TET
@@ -330,7 +336,7 @@
               endif
             endif
             if(neqtide.gt.0) then
-!                write(22,'(6(1x,e14.6))') (eqtide(j),j=1,ne)
+              write(22,'(6(1x,e14.6))') (eqtide(j),j=1,ne)
             endif
 
             do j=1,ne
@@ -409,7 +415,7 @@
               endif
             endif
             if(neqtide.gt.0) then
-!              write(22,'(6(1x,e14.6))') (eqtide(j),j=1,ne)
+              write(22,'(6(1x,e14.6))') (eqtide(j),j=1,ne)
             endif
 
           endif
