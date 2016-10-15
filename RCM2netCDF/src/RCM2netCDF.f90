@@ -395,3 +395,236 @@
       END
 
 !************************************************************************
+      
+      SUBROUTINE CwwNbr(INODE,ThisJ,NextCcwNbr,NextJ,numin,nbm,nm,nl)
+
+!     Purpose: Given position ThisJ in neighbour list of node INODE
+!              routine returns the next neighbour of INODE counter-
+!              clockwise, i.e. NextCcwNbr, and its position, NextJ, in
+!              neighbour list of INODE, allowing for cyclic nature of 
+!              list and assuming neighbours of all nodes already ccw
+
+      IMPLICIT NONE
+
+! *** Passed variables ***
+      INTEGER INODE, ThisJ, numin, nbm, nm
+      integer nl(nbm,nm+1)
+
+! *** Local variables
+      INTEGER NextJ, NextCcwNbr
+
+! ----BEGIN------------------------------------------------------------
+
+      if (ThisJ.lt.numin) then !numn(INODE))then
+        NextJ = ThisJ + 1
+      else
+        NextJ = 1
+      endif
+
+      NextCcwNbr = NL(NextJ,INODE)
+
+      RETURN
+      END
+      
+!************************************************************************
+      
+      INTEGER FUNCTION NextVer(NODE, NBR, numnbr, nl, nbm, nm)
+
+!     Purpose: Given some neighbour, with index NBR, of node NODE -
+!              routine returns the next neighbour of NBR clockwise 
+!              from NODE (generally not same as next neighbour of NODE 
+!              ccw from NBR).
+!              Assumes neighbours of all nodes already sorted ccw
+! 
+!     Use: When finding the vertices of a polygon in ccw direction,
+!          next node is NextVer (thisnode,lastnode)
+
+      IMPLICIT NONE
+
+! *** Passed variables ***
+      INTEGER NODE, NBR, numnbr, nbm,nm
+      integer nl(nbm,nm+1)
+
+! *** Local variables
+      INTEGER K
+
+! ----BEGIN------------------------------------------------------------
+
+!     Find where NODE sits in neighbour list of NBR, and take preceding
+!                                  neighbour in clockwise direction
+      NextVer = 0  ! kill compiler warning
+      do k = 1, numnbr  !NUMN(NBR)
+        if (NODE.eq.NL(k,NBR)) then
+!         thus NODE is kth neighbour of NBR
+          if (k.ne.1) then 
+            NextVer = NL(k-1,NBR)
+          else
+            NextVer = NL(numnbr,nbr)  !NUMN(NBR),NBR)
+          endif
+        endif
+      enddo
+
+      RETURN
+      END
+      
+!************************************************************************
+      
+      SUBROUTINE SORTNBRS(INODE,NBRS,SNB,nm,nbtot,nl,x,y)
+
+!       Purpose: To sort neighbours of current node INODE into
+!                counterclockwise order
+
+      IMPLICIT NONE
+
+! *** PASSED VARIABLES
+
+      integer nm,nbtot,nl(nbtot,nm+1)
+      integer INODE, NBRS, SNB(NBTOT+1)
+      real*8 x(nm),y(nm)
+!       INODE - index of current node
+!       NBRS  - number of neighbours of current node
+!       SNB( ) - sorted neighbours & SNB(NBRS+1) = SNB(1)
+
+! *** LOCAL VARIABLES
+
+      REAL*8 XDIFF,YDIFF,X1,Y1,X2,Y2
+      integer I,J,N, TNb1, TNb2
+      integer OCT,UNB(NBTOT),NUinOCT(8),NBinOCT(8,nbtot)
+!       OCT - octant counter
+!       UNB( ) - packed, unsorted neighbours  
+!       NUinOCT(I) - No. of neighbours found in octant I
+!       NBinOCT(I, ) - Indices of neighbours found in octant I
+!       TNb1( ) - temporary first nbr in sort within octant
+!       TNb2( ) - temporary second nbr in sort within octant
+
+! ----BEGIN------------------------------------------------------------
+!     Find total no. of nbrs of INODE and form packed unsorted list
+      NBRS = 0
+      unb = 0
+      snb = 0
+      DO I = 1, NBTOT
+        IF(NL(I,INODE).GT.0) THEN
+          NBRS = NBRS + 1
+          UNB(NBRS) = NL(I,INODE)
+        ENDIF
+      enddo
+
+!     Set counts of neighbours in octants to zero
+!      DO I = 1,8
+        NUinOCT = 0
+        NBinOCT = 0
+!      enddo
+
+!     Sort nbrs into octants, update counts, store nbrs by octant
+      DO I = 1, NBRS
+        XDIFF = X(UNB(I)) - X(INODE)
+        YDIFF = Y(UNB(I)) - Y(INODE)
+        CALL FINDOCT(OCT,XDIFF,YDIFF) !INODE,UNB(I))
+        NUinOCT(OCT) = NUinOCT(OCT) + 1
+        NBinOCT(OCT,NUinOCT(OCT)) = UNB(I)
+      enddo
+
+!     If more than one nbr in octant, do ccw sort within octant
+
+      N = 0
+
+!         DO 30 OCT = 1,8
+      OCT = 1
+      DO 30 WHILE ((OCT .LE. 8) .AND. (N.LT.NBTOT)) 
+
+        IF ( NUinOCT(OCT) .EQ. 1 ) THEN
+          N = N + 1
+          SNB(N) = NBinOCT(OCT,1)
+        ELSEIF (NUinOCT(OCT) .gt. 1 ) THEN
+          DO 20 I = 1, NUinOCT(OCT)          
+            DO 20 J = 1, NUinOCT(OCT) - I     
+              TNb1 = NBinOCT(OCT,J)
+              TNb2 = NBinOCT(OCT,J+1)
+              X1 = X(TNb1) - X(INODE)
+              X2 = X(TNb2) - X(INODE)
+              Y1 = Y(TNb1) - Y(INODE)
+              Y2 = Y(TNb2) - Y(INODE)
+!               Check cw v.ccw order by vector cross-product
+              IF(X1*Y2-X2*Y1.LT.0)THEN 
+                NBinOCT(OCT,J) = TNb2
+                NBinOCT(OCT,J+1) = TNb1
+              ENDIF
+20        CONTINUE
+          DO 25 I = 1, NUinOCT(OCT)
+            N = N + 1
+            IF (N.LE.NBTOT) THEN
+              SNb(N) = NBinOCT(OCT,I)
+            ENDIF
+25        CONTINUE
+
+        ENDIF
+
+!         Following reset is necessary
+        NUinOCT(OCT)=0
+        OCT = OCT +1
+30    CONTINUE
+
+      SNb(N+1) = SNb(1)
+!       
+      RETURN
+      END
+
+! *********************************************************************
+      
+      SUBROUTINE FINDOCT(OCT, X, Y ) !P1, P2)
+
+!     Purpose: Finds which octant (45 degree sector) node P2 lies in
+!               relative to node P1, by first sorting into quadrants,
+!               then rotating axes 45 degrees and sorting into new
+!               quadrants. Octants numbered counterclockwise from ENE
+
+      IMPLICIT NONE
+
+! *** PASSED VARIABLES ***
+      integer   OCT !, P1, P2
+      REAL*8    X, Y
+
+! *** LOCAL VARIABLES ***   
+      LOGICAL Up, Rite, UpRite, LeftUP
+
+! ----BEGIN------------------------------------------------------------
+
+      Up = Y .GE. 0
+      Rite = X .GE. 0
+      UpRite = Y+X .GE. 0
+      LeftUp = Y-X .GE. 0
+
+      IF ( Up ) THEN
+        IF ( Rite ) THEN
+          IF (.NOT. LeftUp ) THEN
+            OCT = 1
+          ELSE
+            OCT = 2
+          ENDIF
+        ELSE 
+          IF ( UpRite ) THEN
+            OCT = 3
+          ELSE
+            OCT = 4
+          ENDIF
+        ENDIF
+      ELSE
+        IF (.NOT. Rite ) THEN
+          IF ( LeftUp ) THEN
+            OCT = 5
+          ELSE
+            OCT = 6
+          ENDIF
+        ELSE
+          IF (.NOT. UpRite ) THEN
+            OCT = 7
+          ELSE
+            OCT = 8
+          ENDIF
+        ENDIF
+      ENDIF
+
+      end
+
+!********************************************************************************
+!************************************************************************

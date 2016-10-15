@@ -1,4 +1,0 @@
-#!/bin/sh
-# build RCM2Tecplot - compile and link
-ifort -r8 -check bounds -check uninit -traceback ../src/RCM2Tecplot.f90 -o ../../bin/RCM2Tec-ifcdbg
-rm *.mod

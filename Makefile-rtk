@@ -1,0 +1,149 @@
+# ============================================================================
+# Name        : Makefile
+# Author      : Roy Walters
+# Version     :
+# Copyright   : Copyright (C) 2012 under GNU General Public License
+# Description : Makefile for RiCOMToolkit  (needs a lot of work yet)
+# ============================================================================
+
+.PHONY: all reorder rcmha refinex2 zoom_sigma clean
+
+# Change these lines if you are using different
+# Fortran or C compilers and compiler options.
+# Portland Group fortran
+#FC = pgf90
+#F_FLAGS = -r8 -O2 -fast
+#DBG_FLAGS = -r8 -C -g -traceback
+# intel fortran
+#FC = ifort
+#F_FLAGS = -r8
+#DBG_FLAGS = -r8 -fpe0 -check bounds -check uninit -traceback
+# gfortran
+#FC = gfortran
+#F_FLAGS = -fdefault-real-8 -O2 -fdefault-double-8
+#DBG_FLAGS = -g -O2 -fdefault-real-8 -fdefault-double-8 -fcheck=bounds -fbacktrace
+# gfortran - needed for netCDF for library compatibility
+FC2 = gfortran
+F_FLAGS2 = -fdefault-real-8 -O2 -fdefault-double-8 -I/usr/local/include
+DBG_FLAGS2 = -g -O2 -fdefault-real-8 -fdefault-double-8 -fcheck=bounds -fbacktrace -I/usr/local/include
+
+reorder_dbg:
+	$(FC) $(DBG_FLAGS) -c \
+		reorder/src/Reorder03-4-15.for \
+		reorder/src/OpenFileCMD.f90
+	mkdir -p ./bin
+	$(FC) *.o -o bin/reorder_dbg
+	rm *.o
+
+reorder:
+	$(FC) $(F_FLAGS) -c \
+		reorder/src/Reorder03-4-15.for \
+		reorder/src/OpenFileCMD.f90
+	mkdir -p ./bin
+	$(FC) *.o -o bin/reorder
+	rm *.o
+
+rcm2nc:
+	$(FC2) $(F_FLAGS2) -c \
+		RCM2netCDF/src/UGrid_write_netCDF.f90 \
+		RCM2netCDF/src/MainArrays.f90 \
+		RCM2netCDF/src/RCM2netCDF.f90
+	mkdir -p ./bin
+	$(FC2) *.o -lnetcdff  -lnetcdf -o bin/rcm2nc
+	rm *.o
+	rm *.mod
+
+rcm2nc_dbg:
+	$(FC2) $(DBG_FLAGS2) -c \
+		RCM2netCDF/src/UGrid_write_netCDF.f90 \
+		RCM2netCDF/src/MainArrays.f90 \
+		RCM2netCDF/src/RCM2netCDF.f90
+	mkdir -p ./bin
+	$(FC2) *.o -lnetcdff  -lnetcdf -o bin/rcm2nc_dbg
+	rm *.o
+	rm *.mod
+
+rcmha:
+	$(FC) $(F_FLAGS) -c \
+		RCMHarmonicAnalysis/src/RCMHA.f90 \
+		RCMHarmonicAnalysis/src/OpenFileCMD.f90 \
+		RCMHarmonicAnalysis/src/ConvertPhases.f90 \
+		RCMHarmonicAnalysis/src/ellipse.f90 
+	mkdir -p ./bin
+	$(FC) *.o -o bin/rcmha
+	rm *.o
+
+rcmha_dbg:
+	$(FC) $(DBG_FLAGS) -c \
+		RCMHarmonicAnalysis/src/RCMHA.f90 \
+		RCMHarmonicAnalysis/src/OpenFileCMD.f90 \
+		RCMHarmonicAnalysis/src/ConvertPhases.f90 \
+		RCMHarmonicAnalysis/src/ellipse.f90 
+	mkdir -p ./bin
+	$(FC) *.o -o bin/rcmha_dbg
+	rm *.o
+
+refinex2:
+	$(FC) $(F_FLAGS) -c \
+		refinex2/src/REFINE2X02-1-22.f \
+		refinex2/src/OpenFileCMD.f90 
+	mkdir -p ./bin
+	$(FC) *.o -o bin/refinex2
+	rm *.o
+
+refinex2_dbg:
+	$(FC) $(DBG_FLAGS) -c \
+		refinex2/src/REFINE2X02-1-22.f \
+		refinex2/src/OpenFileCMD.f90 
+	mkdir -p ./bin
+	$(FC) *.o -o bin/refinex2_dbg
+	rm *.o
+
+rcm2tec:
+	$(FC) $(F_FLAGS) -c \
+		RCM2Tecplot/src/RCM2Tecplot.f90 
+	mkdir -p ./bin
+	$(FC) *.o -o bin/rcm2tec
+	rm *.o
+	rm *.mod
+
+rcm2tec_dbg:
+	$(FC) $(DBG_FLAGS) -c \
+		RCM2Tecplot/src/RCM2Tecplot.f90 
+	mkdir -p ./bin
+	$(FC) *.o -o bin/rcm2tec_dbg
+	rm *.o
+	rm *.mod
+
+rcmavg2tec:
+	$(FC) $(F_FLAGS) -c \
+		RCM2Tecplot/src/RCMavg2Tecplot.f90 
+	mkdir -p ./bin
+	$(FC) *.o -o bin/rcmavg2tec
+	rm *.o
+	rm *.mod
+
+rcmavg2tec_dbg:
+	$(FC) $(DBG_FLAGS) -c \
+		RCM2Tecplot/src/RCMavg2Tecplot.f90 
+	mkdir -p ./bin
+	$(FC) *.o -o bin/rcmavg2tec_dbg
+	rm *.o
+	rm *.mod
+
+zoom_sigma:
+	$(FC) $(F_FLAGS) -c \
+		zoom_sigma/src/zoom_sigma.f90 
+	mkdir -p ./bin
+	$(FC) *.o -o bin/zoom_sigma
+	rm *.o
+
+zoom_sigma_dbg:
+	$(FC) $(DBG_FLAGS) -c \
+		zoom_sigma/src/zoom_sigma.f90 
+	mkdir -p ./bin
+	$(FC) *.o -o bin/zoom_sigma_dbg
+	rm *.o
+
+clean:
+	rm -f *.o *.mod

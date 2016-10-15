@@ -1,4 +1,0 @@
-#!/bin/sh
-# build RCM2Tecplot - compile and link
-pgf90 -r8 -O2 -fast ../src/RCMavg2Tecplot.f90 -o ../../bin/RCMavg2Tec-pgf
-rm *.mod

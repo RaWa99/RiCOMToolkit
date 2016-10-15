@@ -1,7 +1,0 @@
-#!/bin/sh
-# build reorder - compile and link
-pgf90 -c -r8 -O2 -fast  ../src/Reorder03-4-15.for
-pgf90 -c -r8 -O2 -fast  ../src/OpenFileCMD.f90
-mkdir -p ../../bin
-pgf90 *.o  -o ../../bin/reorder-pgf
-rm *.o
