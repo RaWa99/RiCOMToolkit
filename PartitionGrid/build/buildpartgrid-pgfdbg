@@ -1,9 +1,0 @@
-#!/bin/sh
-# build PartitionGrid debug - compile and link
-pgf90 -c -r8 -C -g -traceback  ../src/MainArrays.f90
-pgf90 -c -r8 -C -g -traceback  ../src/ReadData.f90
-pgf90 -c -r8 -C -g -traceback  ../src/PartGrid.f90
-mkdir -p ../../bin
-pgf90 *.o    -C -g -traceback  -o ../../bin/partgrid-pgfdbg -L../lib -lmetis
-rm *.o
-rm *.mod

@@ -1,9 +1,0 @@
-#!/bin/sh
-# build PartitionGrid - compile and link
-pgf90 -c -r8 -O2 -fast  ../src/MainArrays.f90
-pgf90 -c -r8 -O2 -fast  ../src/ReadData.f90
-pgf90 -c -r8 -O2 -fast  ../src/PartGrid.f90
-mkdir -p ../../bin
-pgf90 *.o  -o ../../bin/partgrid-pgf -L../lib -lmetis
-rm *.o
-rm *.mod

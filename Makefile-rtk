@@ -6,7 +6,7 @@
 # Description : Makefile for RiCOMToolkit  (needs a lot of work yet)
 # ============================================================================
 
-.PHONY: all reorder rcmha refinex2 zoom_sigma clean
+.PHONY: all reorder rcmha refinex2 zoom_sigma decomp clean
 
 # Change these lines if you are using different
 # Fortran or C compilers and compiler options.
@@ -144,6 +144,46 @@ zoom_sigma_dbg:
 	mkdir -p ./bin
 	$(FC) *.o -o bin/zoom_sigma_dbg
 	rm *.o
+
+decomp:
+	$(FC) $(F_FLAGS) -c \
+		DecomposeGrid/src/mainmod.f90 \
+		DecomposeGrid/src/OpenFileCMD.f90 \
+		DecomposeGrid/src/DecomposeGrid.f90
+	mkdir -p ./bin
+	$(FC) *.o -o bin/decomp -LDecomposeGrid/lib -lmetis
+	rm *.o
+	rm *.mod
+
+decomp_dbg:
+	$(FC) $(DBG_FLAGS) -c \
+		DecomposeGrid/src/mainmod.f90 \
+		DecomposeGrid/src/OpenFileCMD.f90 \
+		DecomposeGrid/src/DecomposeGrid.f90
+	mkdir -p ./bin
+	$(FC) *.o -o bin/decomp_dbg -LDecomposeGrid/lib -lmetis
+	rm *.o
+	rm *.mod
+
+partition:
+	$(FC) $(F_FLAGS) -c \
+		PartitionGrid/src/MainArrays.f90 \
+		PartitionGrid/src/ReadData.f90 \
+		PartitionGrid/src/PartGrid.f90
+	mkdir -p ./bin
+	$(FC) *.o -o bin/partition -LPartitionGrid/lib -lmetis
+	rm *.o
+	rm *.mod
+
+partition_dbg:
+	$(FC) $(DBG_FLAGS) -c \
+		PartitionGrid/src/MainArrays.f90 \
+		PartitionGrid/src/ReadData.f90 \
+		PartitionGrid/src/PartGrid.f90
+	mkdir -p ./bin
+	$(FC) *.o -o bin/partition_dbg -LPartitionGrid/lib -lmetis
+	rm *.o
+	rm *.mod
 
 clean:
 	rm -f *.o *.mod

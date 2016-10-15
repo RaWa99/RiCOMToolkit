@@ -1,9 +1,0 @@
-#!/bin/sh
-# build DecomposeGrid - compile and link
-pgf90 -c -r8 -O2 -fast  ../src/mainmod.f90
-pgf90 -c -r8 -O2 -fast  ../src/OpenFileCMD.f90
-pgf90 -c -r8 -O2 -fast  ../src/DecomposeGrid.f90
-mkdir -p ../../bin
-pgf90 *.o  -o ../../bin/decomposegrid-pgf -L../lib -lmetis
-rm *.o
-rm *.mod
