@@ -15,7 +15,7 @@
       integer, allocatable :: tsUnodes(:),tsSnodes(:),tsCnodes(:)
       real*8 ::  TET,tet0
       real*8 :: x0off,y0off
-      real*8, parameter :: depmin=0.01
+      real*8, parameter :: depmin=0.00001
       real*8, parameter :: bigr = 6378136.D0
       real*8, parameter :: pi = 3.141592653589793D0
       real*8, parameter :: rad2deg=180.D0/pi
@@ -27,7 +27,7 @@
       real*8, allocatable ::  rhv(:),gamma(:),Rn0(:,:) !scratch vectors
       real*8, allocatable ::  qp(:,:),cc(:,:),sigt(:,:),PSU(:,:),TC(:,:)
       real*8, allocatable ::  emax(:),emin(:),spdmax(:),umax(:),vmax(:),t1(:),twet(:)
-      character*256 OutResFile
+      character*256 OutResFile, OutMaxFile
  
   end module RCMArrays
 
@@ -40,10 +40,10 @@
       implicit none
 
       integer :: i,j,k,istat,npvgrd
-      integer numarg, iargc
-      character*256 fnamedata, fnameprofile
+      integer :: numarg, iargc
+      character*256 :: fnamedata='', fnameprofile='', fnamemax=''
       character(18) :: AnalysisTime
-      character(len=256) arg
+      character(len=256) :: arg
        
 !     read time slices from the binary data file
       numarg=iargc()
@@ -65,7 +65,7 @@
       endif
 
       open(unit=20,file=fnamedata,status='old',form='unformatted')
-      open(unit=21,file=fnameprofile,status='old')
+      if(fnameprofile.ne.'') open(unit=21,file=fnameprofile,status='old')
 
       OutResFile = trim(fnamedata)//'.dat'
 
@@ -77,13 +77,14 @@
       read(20) nson,nsed,nsol,neMB,neqtide,iOPsol
 
       npv = max(npv,1)
+      if(npv.gt.1) nopt= 3
 
       write(*,*) 'ne,np,nsides,npv=',ne,np,nsides,npv
       
       npvgrd = npv + min(1,max(0,izcoord-1))
         
       ALLOCATE ( xp(np), yp(np), zp(np), nen(ne,ncn), &
-          sxy(2,nsides),sbot(nsides),sdx(nsides),sdy(nsides), &
+          sxy(2,nsides),sbot(nsides),sdx(nsides),sdy(nsides),Rn0(npvgrd,nsides), &
           numsideT(ncn,ne),iside(2,nsides),area(ne),IECode(ne),iends(2,nsides), &
           uc(npvgrd,np),vc(npvgrd,np),zdep(npvgrd),rhv(nsides),gamma(nsides),sdep(nsides), &
           eta(ne),un(npvgrd,nsides),ut(npvgrd,nsides),wz(npvgrd,ne), eqtide(ne), STAT = istat )
@@ -94,6 +95,14 @@
         
       if(izcoord.eq.10) then
         ALLOCATE ( etaMB(ne), STAT = istat )
+        if(istat.ne.0) then
+          write(*,*) 'FATAL ERROR: Cannot allocate ncon main storage arrays',istat
+          stop
+        endif
+      endif
+        
+      if(nson.ne.0) then
+        ALLOCATE ( qp(npv,ne), STAT = istat )
         if(istat.ne.0) then
           write(*,*) 'FATAL ERROR: Cannot allocate ncon main storage arrays',istat
           stop
@@ -120,7 +129,7 @@
       tet0 = -1.D0
       un = 0.D0
       ut = 0.D0
-      if(npv.gt.1) wz = 0.D0
+      wz = 0.D0
       
       do
         read(20, IOSTAT=istat) TET 
@@ -139,7 +148,7 @@
 ! *** read velocity (un,ut)
         if(istat.eq.0) read(20, IOSTAT=istat) ((un(k,i),k=1,npv),i=1,nsides)
         if(istat.eq.0) read(20, IOSTAT=istat) ((ut(k,i),k=1,npv),i=1,nsides)    
-        if(istat.eq.0.and.npv.gt.1) read(20, IOSTAT=istat) ((wz(k,i),k=1,npvgrd-1),i=1,ne)
+        if(istat.eq.0.and.(npv.gt.1.or.nson.gt.0)) read(20, IOSTAT=istat) ((wz(k,i),k=1,npv),i=1,ne)
 
 ! *** average (u,v) to centroid
 !        do j=1,ne
@@ -196,7 +205,7 @@
         endif
       
 ! *** write tecplot file
-        write(*,*) ' call tecout, nopt=',nopt
+        if(noptcount.eq.0) write(*,*) ' call tecout, nopt=',nopt
         call OutputTecplot
 
         noptcount = noptcount + 1
@@ -204,19 +213,35 @@
       enddo
 
 ! *** clean up
-      close(20)
+!      close(20)
 
 ! *** write maxmin results
       if(istat.eq.0) then
+        ALLOCATE ( emax(ne),emin(ne),umax(nsides),vmax(nsides),t1(ne),twet(ne), STAT = istat )
+        if(istat.ne.0) then
+          write(*,*) 'FATAL ERROR: Cannot allocate max arrays',istat
+          stop
+        endif
+
         read(20, IOSTAT=istat) (emax(j),j=1,ne),(emin(j),j=1,ne)
         read(20, IOSTAT=istat) (umax(j),j=1,nsides),(vmax(j),j=1,nsides)
         read(20, IOSTAT=istat) (t1(j),j=1,ne),(twet(j),j=1,ne)
+        if(istat.ne.0) then
+          write(*,*) ' Error reading input max file at time=', TET
+          stop
+        endif
+
 ! *** write tecplot file
+        OutResFile = trim(fnamedata)//'.max.dat'
+        noptcount = 0
         nopt = 4
         write(*,*) ' call tecout, nopt=',nopt
         call OutputTecplot
         
       endif
+
+! *** clean up
+      close(20)
 
       stop
       end
@@ -827,7 +852,7 @@
 
           endif
         
-        CASE(4)  !eta, u, v, cc interpolated to vertices. 2D. case 4 is max values
+        CASE(4)  !case 4 is max values
 
 ! *** then write it out
 
@@ -848,7 +873,7 @@
             endif
 
             !set original coordinates if icoord>0
-            if(ixycoord.gt.0) then
+            if(ixycoord.eq.0) then
 !              x00 = -long0 ! 0. !offsets: from input file?
 !              y00 = -lat0  ! 0.
               bigrI = rad2deg/bigr
