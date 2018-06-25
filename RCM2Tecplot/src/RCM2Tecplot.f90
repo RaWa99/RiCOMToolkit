@@ -4,7 +4,7 @@
   
       implicit none
 
-      integer :: ne,np,nsides,npv,ncn,npvc=1   !nph,nphu,npv  
+      integer :: ne,np,nsides,npv,npvC,ncn   !nph,nphu,npv  
       integer :: nson,nsed,nsol
       integer :: neqtide=0, neMB=0, nsbc, iOPsol=0
       integer :: noptcount=0, nopt=2
@@ -77,7 +77,17 @@
       read(20) nson,nsed,nsol,neMB,neqtide,iOPsol
 
       npv = max(npv,1)
-      if(npv.gt.1) nopt= 3
+      if(npv.gt.1) then 
+        nopt= 3
+        if(izcoord.lt.2) then
+          npvC = npv-1
+        else
+          npvC = npv
+        endif
+      else
+        nopt= 2
+        npvC = 1
+      endif
 
       write(*,*) 'ne,np,nsides,npv=',ne,np,nsides,npv
       
@@ -96,7 +106,7 @@
       if(izcoord.eq.10) then
         ALLOCATE ( etaMB(ne), STAT = istat )
         if(istat.ne.0) then
-          write(*,*) 'FATAL ERROR: Cannot allocate ncon main storage arrays',istat
+          write(*,*) 'FATAL ERROR: Cannot allocate etaMB array',istat
           stop
         endif
       endif
@@ -104,8 +114,36 @@
       if(nson.ne.0) then
         ALLOCATE ( qp(npv,ne), STAT = istat )
         if(istat.ne.0) then
-          write(*,*) 'FATAL ERROR: Cannot allocate ncon main storage arrays',istat
+          write(*,*) 'FATAL ERROR: Cannot allocate qp array',istat
           stop
+        endif
+      endif
+
+      if(nsol.gt.0) then
+        ALLOCATE ( sigt(npvc,ne), STAT = istat )
+        if(istat.ne.0) then
+          write(*,*) 'FATAL ERROR: Cannot allocate sigt array',istat
+          stop
+        endif
+        if(iOPsol.eq.1) then
+          ALLOCATE ( PSU(npvc,ne), STAT = istat )
+          if(istat.ne.0) then
+            write(*,*) 'FATAL ERROR: Cannot allocate PSU array',istat
+            stop
+          endif
+        elseif(iOPsol.eq.2) then
+          ALLOCATE ( TC(npvc,ne), STAT = istat )
+          if(istat.ne.0) then
+            write(*,*) 'FATAL ERROR: Cannot allocate TC array',istat
+            stop
+          endif
+          read(20) (TC(1,j),j=1,ne)
+        elseif(iOPsol.eq.3) then
+          ALLOCATE ( PSU(npvc,ne),TC(npvc,ne), STAT = istat )
+          if(istat.ne.0) then
+            write(*,*) 'FATAL ERROR: Cannot allocate PSU,TC arrays',istat
+            stop
+          endif
         endif
       endif
       
@@ -184,14 +222,14 @@
         endif
 
         if(nsol.gt.0.and.istat.eq.0) then
-          read(20, IOSTAT=istat) (sigt(1,j),j=1,ne)
+          read(20, IOSTAT=istat) ((sigt(k,j),k=1,npvc),j=1,ne)
           if(iOPsol.eq.1) then
-            read(20) (PSU(1,j),j=1,ne)
+            read(20) ((PSU(k,j),k=1,npvc),j=1,ne)
           elseif(iOPsol.eq.2) then
-            read(20) (TC(1,j),j=1,ne)
+            read(20) ((TC(k,j),k=1,npvc),j=1,ne)
           elseif(iOPsol.eq.3) then
-            read(20) (PSU(1,j),j=1,ne)
-            read(20) (TC(1,j),j=1,ne)
+            read(20) ((PSU(k,j),k=1,npvc),j=1,ne)
+            read(20) ((TC(k,j),k=1,npvc),j=1,ne)
           endif
         endif
 
@@ -661,7 +699,7 @@
             if(nson.gt.0) then
               write(22,'(6(1x,e14.6))') ((qp(k,j),k=1,npvm),j=1,ne)
             elseif(nsed.gt.0) then
-              write(22,'(6(1x,e14.6))') ((cc(k,j),k=1,npvm),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((cc(k,j),k=1,npvm+1),j=1,ne)
             elseif(nsol.ne.0) then
               if(iOPsol.eq.0) then
                 write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
@@ -833,7 +871,7 @@
             if(nson.gt.0) then
               write(22,'(6(1x,e14.6))') ((qp(k,j),k=1,npvm),j=1,ne)
             elseif(nsed.gt.0) then
-              write(22,'(6(1x,e14.6))') ((cc(k,j),k=1,npvm),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((cc(k,j),k=1,npvm+1),j=1,ne)
             elseif(nsol.ne.0) then
               if(iOPsol.eq.0) then
                 write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
