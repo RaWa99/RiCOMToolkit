@@ -7,7 +7,7 @@
       integer :: ne,np,nsides,npv,npvC,ncn   !nph,nphu,npv  
       integer :: nson,nsed,nsol
       integer :: neqtide=0, neMB=0, nsbc, iOPsol=0
-      integer :: noptcount=0, nopt=2
+      integer :: noptcount=0, nopt=2, outfileopt=0
       integer :: izcoord=2,izgrid=0,ixycoord
       integer :: jUprofile=0,jCprofile=0, jSprofile=0
       integer, allocatable :: nen(:,:),numsideT(:,:),iside(:,:),IECode(:)
@@ -21,13 +21,15 @@
       real*8, parameter :: rad2deg=180.D0/pi
       real*8, parameter :: deg2rad=pi/180.D0
       real*8, allocatable ::  xp(:),yp(:),zp(:),zdep(:),area(:)
+      real*8, allocatable ::  xpt(:),ypt(:),zpt(:),uct(:),vct(:)
       real*8, allocatable ::  eta(:),un(:,:),ut(:,:),wz(:,:),etaMB(:)
       real*8, allocatable ::  uc(:,:),vc(:,:),eqtide(:)
       real*8, allocatable ::  sxy(:,:),sbot(:),sdx(:),sdy(:),sdep(:)
       real*8, allocatable ::  rhv(:),gamma(:),Rn0(:,:) !scratch vectors
       real*8, allocatable ::  qp(:,:),cc(:,:),sigt(:,:),PSU(:,:),TC(:,:)
       real*8, allocatable ::  emax(:),emin(:),spdmax(:),umax(:),vmax(:),t1(:),twet(:)
-      character*256 OutResFile, OutMaxFile
+      character(256) :: OutResFile, OutMaxFile
+      character(20) :: outopt
  
   end module RCMArrays
 
@@ -38,28 +40,66 @@
       use RCMArrays
   
       implicit none
+      
+      include 'tecio.f90'
 
-      integer :: i,j,k,istat,npvgrd
+      integer :: i,j,k,istat,npvgrd,npdim
       integer :: numarg, iargc
       character*256 :: fnamedata='', fnameprofile='', fnamemax=''
       character(18) :: AnalysisTime
       character(len=256) :: arg
+      logical :: notOK=.true.
        
 !     read time slices from the binary data file
       numarg=iargc()
 
       if(numarg.eq.0) then
+        do while (notOK.eqv..true.)
+          write(*,*) ' Enter output option: TECASC (ascii) or TECPLT (plt).'
+          read(*,'(a)') outopt
+          if(outopt(1:6).eq.'TECASC') then
+            outfileopt = 0
+            notOK = .false.
+          elseif(outopt(1:6).eq.'TECPLT') then
+            outfileopt = 1
+            notOK = .false.
+          else
+            write(*,*) ' Unknown option: try again'
+          endif
+        enddo
         write(*,*) ' Enter filename for input RiCOM binary file'
         read(*,'(a)') fnamedata
-        write(*,*) ' Enter filename for profile points input'
+        write(*,*) ' Enter filename for profile points input. CR=none.'
         read(*,'(a)') fnameprofile
-      elseif(numarg.ge.1) then
+      endif
+      
+      if(numarg.ge.1) then
         i = 1
+        call getarg(i,arg)
+        outopt = arg
+        do while (notOK.eqv..true.)
+          if(outopt(1:6).eq.'TECASC') then
+            outfileopt = 0
+            notOK = .false.
+          elseif(outopt(1:6).eq.'TECPLT') then
+            outfileopt = 1
+            notOK = .false.
+          else
+            write(*,*) ' Unknown option: try again'
+            write(*,*) ' Enter output option: TECASC (ascii) or TECPLT (plt).'
+            read(*,'(a)') outopt
+          endif
+        enddo
+      endif
+      
+      if(numarg.ge.2) then
+        i = 2
         call getarg(i,arg)
         fnamedata = arg
       endif
-      if(numarg.ge.2) then
-        i = 2
+      
+      if(numarg.ge.3) then
+        i = 3
         call getarg(i,arg)
         fnameprofile = arg
       endif
@@ -67,7 +107,11 @@
       open(unit=20,file=fnamedata,status='old',form='unformatted')
       if(fnameprofile.ne.'') open(unit=21,file=fnameprofile,status='old')
 
-      OutResFile = trim(fnamedata)//'.dat'
+      if(outfileopt.eq.0) then
+        OutResFile = trim(fnamedata)//'.dat'
+      elseif(outfileopt.eq.1) then
+        OutResFile = trim(fnamedata)//'.plt'
+      endif
 
       read(20) AnalysisTime
       write(*,*) 'AnalysisTime= ',AnalysisTime
@@ -91,13 +135,15 @@
 
       write(*,*) 'ne,np,nsides,npv=',ne,np,nsides,npv
       
-      npvgrd = npv + min(1,max(0,izcoord-1))
+      npvgrd = npvC + 1  !min(1,max(0,izcoord-1))
+      npdim = (np+nsides)*npvgrd
         
       ALLOCATE ( xp(np), yp(np), zp(np), nen(ne,ncn), &
           sxy(2,nsides),sbot(nsides),sdx(nsides),sdy(nsides),Rn0(npvgrd,nsides), &
           numsideT(ncn,ne),iside(2,nsides),area(ne),IECode(ne),iends(2,nsides), &
           uc(npvgrd,np),vc(npvgrd,np),zdep(npvgrd),rhv(nsides),gamma(nsides),sdep(nsides), &
-          eta(ne),un(npvgrd,nsides),ut(npvgrd,nsides),wz(npvgrd,ne), eqtide(ne), STAT = istat )
+          uct(npdim),vct(npdim),xpt(npdim),ypt(npdim),zpt(npdim), &
+          eta(ne),un(npvgrd,nsides),ut(npvgrd,nsides),wz(npvc,ne), eqtide(ne), STAT = istat )
       if(istat.ne.0) then
         write(*,*) 'FATAL ERROR: Cannot allocate ncon main storage arrays',istat
         stop
@@ -177,7 +223,7 @@
         elseif(istat.lt.0) then
           write(*,*) 'END OF FILE - no max min data to process'
           exit
-        elseif(tet.lt.tet0) then
+        elseif(tet.lt.tet0) then  !go to writing max/min file
           exit
         endif
         tet0 = tet
@@ -186,7 +232,7 @@
 ! *** read velocity (un,ut)
         if(istat.eq.0) read(20, IOSTAT=istat) ((un(k,i),k=1,npv),i=1,nsides)
         if(istat.eq.0) read(20, IOSTAT=istat) ((ut(k,i),k=1,npv),i=1,nsides)    
-        if(istat.eq.0.and.(npv.gt.1.or.nson.gt.0)) read(20, IOSTAT=istat) ((wz(k,i),k=1,npv),i=1,ne)
+        if(istat.eq.0.and.(npv.gt.1.or.nson.gt.0)) read(20, IOSTAT=istat) ((wz(k,i),k=1,npvc),i=1,ne)
 
 ! *** average (u,v) to centroid
 !        do j=1,ne
@@ -249,9 +295,11 @@
         noptcount = noptcount + 1
 
       enddo
+      
+      if(outfileopt.eq.1) then
+        i = tecend142()
+      endif
 
-! *** clean up
-!      close(20)
 
 ! *** write maxmin results
       if(istat.eq.0) then
@@ -270,12 +318,20 @@
         endif
 
 ! *** write tecplot file
-        OutResFile = trim(fnamedata)//'.max.dat'
+        if(outfileopt.eq.0) then
+          OutMaxFile = trim(fnamedata)//'.max.dat'
+        elseif(outfileopt.eq.1) then
+          OutMaxFile = trim(fnamedata)//'.max.plt'
+        endif
         noptcount = 0
         nopt = 4
         write(*,*) ' call tecout, nopt=',nopt
         call OutputTecplot
-        
+       
+        if(outfileopt.eq.1) then
+          i = tecend142()
+        endif
+       
       endif
 
 ! *** clean up
@@ -292,15 +348,20 @@
 
       implicit none
       
+      include 'tecio.f90'
+      
       integer, parameter :: ndf0=0
       integer :: n23, npv0, MBout
       integer, save :: npvb=-1
-      integer :: j,js,k,kv,nn,ncn2,nentmp,mr,npvm,nps
+      integer :: i,j,js,k,kv,nn,ncn2,nentmp,mr,npvm,nps,nen1(4,1),nen3(8,1)
+      integer, save :: ffmt=0, ftype=0, idbg=1, isdbl=1, i0=0, i1=1,i8=8
+      integer :: ZoneType, PVLst(10), VarLoc(10), ShVar(10),ShCon,nptot,netot
       real*8 :: cdep, zz(100),topomin,deptest,zero,zncn
       real*8 :: uu,vv
       real*8 :: bigrI,bigrcI
 !      real, allocatable, save :: etamax(:),spdmax(:),t1(:),twet(:),twet2(:),twet3(:),etalast(:)
       character(10) cseq
+      character(80) :: vars
 
 !      integer, parameter :: ndf0=0
 !      integer :: noptcount, noptwrite, istat, n23, npv0,MBout
@@ -314,13 +375,6 @@
 !      character(10) cseq
 
 ! *** Tecplot output- a single Tecplot file with many frames
-        if (noptcount.eq.0) then
-          ! first time through start new file
-            open(unit=22, file=OutResFile,status='unknown')
-        else 
-          ! append file
-            open(unit=22, file=OutResFile,status='old',position='append')
-        endif
 
         SELECT CASE (nopt)
 
@@ -336,179 +390,389 @@
             MBout = 0
           endif
 
-          if (noptcount.eq.0) then
-          ! first time through start new file
+          if (noptcount.eq.0) then   ! first time through start new file
+
+! *** define variables
             if(nson.gt.0) then
-                write(22,*)'VARIABLES="X" "Y" "Z" "ETA" "U" "V" "W" "Q" '
+              vars = 'X Y Z ETA U V W Q'
             elseif(nsed.gt.0) then
-              write(22,*)'VARIABLES="X" "Y" "Z" "ETA" "U" "V" "S" '
+              vars = 'X Y Z ETA U V S'
             elseif(nsol.ne.0) then
               if(iOPsol.eq.0) then
-                write(22,*)'VARIABLES="X" "Y" "Z" "ETA" "U" "V" "Sigt" '
+                vars = 'X Y Z ETA U V Sigt'
               elseif(iOPsol.eq.1) then
-                write(22,*)'VARIABLES="X" "Y" "Z" "ETA" "U" "V" "Sigt" "PSU" '
+                vars = 'X Y Z ETA U V Sigt PSU'
               elseif(iOPsol.eq.2) then
-                write(22,*)'VARIABLES="X" "Y" "Z" "ETA" "U" "V" "Sigt" "T" '
+                vars = 'X Y Z ETA U V Sigt T'
               elseif(iOPsol.eq.3) then
-                write(22,*)'VARIABLES="X" "Y" "Z" "ETA" "U" "V" "Sigt" "PSU" "T" '
+                vars = 'X Y Z ETA U V Sigt PSU T'
               endif
             elseif(MBout.gt.0) then
-              write(22,*)'VARIABLES="X" "Y" "Z" "ETA" "U" "V" "EMB" "UMB" "VMB" '
+              vars = 'X Y Z ETA U V EMB UMB VMB'
             elseif(neqtide.gt.0) then
-              write(22,*)'VARIABLES="X" "Y" "Z" "ETA" "U" "V" "EQT" '
+              vars = 'X Y Z ETA U V EQT'
             else
-              write(22,*)'VARIABLES="X" "Y" "Z" "ETA" "U" "V" '
+                vars = 'X Y Z ETA U V'
             endif
             
-            write(22,"('ZONE N=',i7,' E=',i7 )" ) np+nsides,ne
+! *** initialize output files
+            if(outfileopt.eq.0) then
+            
+              open(unit=22, file=OutResFile,status='unknown')
+            
+              write(22,*)'VARIABLES='//trim(vars)
+      
+              write(22,"('ZONE N=',i7,' E=',i7 )" ) np+nsides,ne
 
-            if(ncn.eq.3) then
-              write(22,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
-            elseif(ncn.eq.4) then
-              write(22,"(' ZONETYPE=FEQUADRILATERAL DATAPACKING=BLOCK')" )
-            endif
-            
-            if(nsol.ne.0) then
-              if(iOPsol.eq.0) then
+              if(ncn.eq.3) then
+                write(22,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
+              elseif(ncn.eq.4) then
+                write(22,"(' ZONETYPE=FEQUADRILATERAL DATAPACKING=BLOCK')" )
+              endif
+              
+              if(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  write(22,"(' VARLOCATION=([4,7]=CELLCENTERED)')" )
+                elseif(iOPsol.eq.1) then
+                  write(22,"(' VARLOCATION=([4,7-8]=CELLCENTERED)')" )
+                elseif(iOPsol.eq.2) then
+                  write(22,"(' VARLOCATION=([4,7-8]=CELLCENTERED)')" )
+                elseif(iOPsol.eq.3) then
+                  write(22,"(' VARLOCATION=([4,7-9]=CELLCENTERED)')" )
+                endif
+              elseif(nson.ne.0) then
+                write(22,"(' VARLOCATION=([4,7,8]=CELLCENTERED)')" )
+              elseif(nsed.gt.0) then
                 write(22,"(' VARLOCATION=([4,7]=CELLCENTERED)')" )
-              elseif(iOPsol.eq.1) then
-                write(22,"(' VARLOCATION=([4,7-8]=CELLCENTERED)')" )
-              elseif(iOPsol.eq.2) then
-                write(22,"(' VARLOCATION=([4,7-8]=CELLCENTERED)')" )
-              elseif(iOPsol.eq.3) then
-                write(22,"(' VARLOCATION=([4,7-9]=CELLCENTERED)')" )
+              elseif(neqtide.gt.0.or.MBout.gt.0) then
+                write(22,"(' VARLOCATION=([4,7]=CELLCENTERED)')" )
+              else
+                write(22,"(' VARLOCATION=([4]=CELLCENTERED)')" )
               endif
-            elseif(nson.ne.0) then
-              write(22,"(' VARLOCATION=([4,7,8]=CELLCENTERED)')" )
-            elseif(nsed.gt.0) then
-              write(22,"(' VARLOCATION=([4,7]=CELLCENTERED)')" )
-            elseif(neqtide.gt.0.or.MBout.gt.0) then
-              write(22,"(' VARLOCATION=([4,7]=CELLCENTERED)')" )
-            else
-              write(22,"(' VARLOCATION=([4]=CELLCENTERED)')" )
-            endif
+
+              write(22,*) ' SOLUTIONTIME=',TET
+
+            elseif(outfileopt.eq.1) then
+
+              i = tecini142('Convert RiCOM bin to Tec360 plt'//char(0),&
+                            trim(vars)//char(0),&
+                            trim(OutResFile)//char(0),&
+                            './'//char(0),&
+                            ffmt,ftype,idbg,isdbl)
+
+              if(ncn.eq.3) then
+                ZoneType = 2
+              elseif(ncn.eq.4) then
+                ZoneType = 3
+              endif
+              VarLoc = 1
+              VarLoc(4) = 0
+              VarLoc(7:10) = 0
+              PVLst = 0
+              ShVar = 0
+              ShCon = 0
+              nptot = np + nsides
+              netot = ne
+              
+              i = TECZNE142('zone'//char(0),ZoneType,nptot,netot,i0,i0,i0,i0,&
+                          tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
+
+! *** write the data
+              xpt(1:np) = xp(1:np)
+              ypt(1:np) = yp(1:np)
+              zpt(1:np) = zp(1:np)
+              do j=1,nsides
+                xpt(np+j) = sxy(1,j)
+                ypt(np+j) = sxy(2,j)
+                zpt(np+j) = sbot(j)
+              enddo
+              i = TECDATD142(nptot,xpt)
+              i = TECDATD142(nptot,ypt)
+              i = TECDATD142(nptot,zpt)
+              i = TECDATD142(ne,eta)
+              do j=1,np
+                uct(j) = uc(1,j)
+                vct(j) = vc(1,j)
+              enddo
+              do j=1,nsides
+                uct(np+j) =  un(1,j)*sdy(j)+ut(1,j)*sdx(j)
+                vct(np+j) = -un(1,j)*sdx(j)+ut(1,j)*sdy(j)
+              enddo
+              i = TECDATD142(nptot,uct)
+              i = TECDATD142(nptot,vct)
             
-            write(22,*) ' SOLUTIONTIME=',TET
-
-            ! write the data
-            write(22,'(6(1x,e14.6))') ((xp(j),j=1,np),(sxy(1,j),j=1,nsides),k=1,1) !x
-            write(22,'(6(1x,e14.6))') ((yp(j),j=1,np),(sxy(2,j),j=1,nsides),k=1,1) !y
-            write(22,'(6(1x,e14.6))') ((zp(j),j=1,np),(sbot(j),j=1,nsides),k=1,1) !z
-
-            write(22,'(6(1x,e14.6))') (eta(j),j=1,ne)
-
-            zero = 0.0
-            write(22,'(6(1x,e14.6))') ((uc(1,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,1)
-            write(22,'(6(1x,e14.6))') ((vc(1,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,1)
-
-            if(nson.gt.0) then
-              write(22,'(6(1x,e14.6))') (wz(1,j),j=1,ne)
-              write(22,'(6(1x,e14.6))') (qp(1,j),j=1,ne)
-            elseif(nsed.gt.0) then
-              write(22,'(6(1x,e14.6))') (cc(1,j),j=1,ne) !(dsg(j),j=1,ne)
-            elseif(nsol.ne.0) then
-              if(iOPsol.eq.0) then
-                write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
-              elseif(iOPsol.eq.1) then
-                write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
-                write(22,'(6(1x,e14.6))') (PSU(1,j),j=1,ne)
-              elseif(iOPsol.eq.2) then
-                write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
-                write(22,'(6(1x,e14.6))') (TC(1,j),j=1,ne)
-              elseif(iOPsol.eq.3) then
-                write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
-                write(22,'(6(1x,e14.6))') (PSU(1,j),j=1,ne)
-                write(22,'(6(1x,e14.6))') (TC(1,j),j=1,ne)
+              if(nson.gt.0) then
+                i = TECDATD142(ne,wz)
+                i = TECDATD142(ne,qp)
+              elseif(nsed.gt.0) then
+                i = TECDATD142(ne,cc)
+              elseif(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  i = TECDATD142(ne,sigt)
+                elseif(iOPsol.eq.1) then
+                  i = TECDATD142(ne,sigt)
+                  i = TECDATD142(ne,PSU)
+                elseif(iOPsol.eq.2) then
+                  i = TECDATD142(ne,sigt)
+                  i = TECDATD142(ne,TC)
+                elseif(iOPsol.eq.3) then
+                  i = TECDATD142(ne,sigt)
+                  i = TECDATD142(ne,PSU)
+                  i = TECDATD142(ne,TC)
+                endif
+              elseif(MBout.gt.0) then
+                i = TECDATD142(ne,etaMB)
+                do j=1,np
+                  uct(j) = uc(2,j)
+                  vct(j) = vc(2,j)
+                enddo
+                do j=1,nsides
+                  uct(np+j) = un(2,j)*sdy(j)+ut(2,j)*sdx(j)
+                  vct(np+j) = -un(2,j)*sdx(j)+ut(2,j)*sdy(j)
+                enddo
+                i = TECDATD142(nptot,uct)
+                i = TECDATD142(nptot,vct)
+              elseif(neqtide.gt.0) then
+                i = TECDATD142(ne,eqtide)
               endif
-            elseif(MBout.gt.0) then
-              write(22,'(6(1x,e14.6))') (etaMB(j),j=1,ne)
-              write(22,'(6(1x,e14.6))') (uc(2,j),j=1,np),(( un(2,j)*sdy(j)+ut(2,j)*sdx(j)),j=1,nsides)
-              write(22,'(6(1x,e14.6))') (vc(2,j),j=1,np),((-un(2,j)*sdx(j)+ut(2,j)*sdy(j)),j=1,nsides)
-            elseif(neqtide.gt.0) then
-              write(22,'(6(1x,e14.6))') (eqtide(j),j=1,ne)
             endif
+              
+            if(outfileopt.eq.0) then
+              write(22,'(6(1x,e14.6))') ((xp(j),j=1,np),(sxy(1,j),j=1,nsides),k=1,1) !x
+              write(22,'(6(1x,e14.6))') ((yp(j),j=1,np),(sxy(2,j),j=1,nsides),k=1,1) !y
+              write(22,'(6(1x,e14.6))') ((zp(j),j=1,np),(sbot(j),j=1,nsides),k=1,1) !z
+
+              write(22,'(6(1x,e14.6))') (eta(j),j=1,ne)
+
+              zero = 0.0
+              write(22,'(6(1x,e14.6))') ((uc(1,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,1)
+              write(22,'(6(1x,e14.6))') ((vc(1,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,1)
+
+              if(nson.gt.0) then
+                write(22,'(6(1x,e14.6))') (wz(1,j),j=1,ne)
+                write(22,'(6(1x,e14.6))') (qp(1,j),j=1,ne)
+              elseif(nsed.gt.0) then
+                write(22,'(6(1x,e14.6))') (cc(1,j),j=1,ne) !(dsg(j),j=1,ne)
+              elseif(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
+                elseif(iOPsol.eq.1) then
+                  write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
+                  write(22,'(6(1x,e14.6))') (PSU(1,j),j=1,ne)
+                elseif(iOPsol.eq.2) then
+                  write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
+                  write(22,'(6(1x,e14.6))') (TC(1,j),j=1,ne)
+                elseif(iOPsol.eq.3) then
+                  write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
+                  write(22,'(6(1x,e14.6))') (PSU(1,j),j=1,ne)
+                  write(22,'(6(1x,e14.6))') (TC(1,j),j=1,ne)
+                endif
+              elseif(MBout.gt.0) then
+                do j=1,np
+                  uct(j) = uc(2,j)
+                  vct(j) = vc(2,j)
+                enddo
+                do j=1,nsides
+                  uct(np+j) = un(2,j)*sdy(j)+ut(2,j)*sdx(j)
+                  vct(np+j) = -un(2,j)*sdx(j)+ut(2,j)*sdy(j)
+                enddo
+                write(22,'(6(1x,e14.6))') (etaMB(j),j=1,ne)
+                write(22,'(6(1x,e14.6))') (uc(2,j),j=1,np),(( un(2,j)*sdy(j)+ut(2,j)*sdx(j)),j=1,nsides)
+                write(22,'(6(1x,e14.6))') (vc(2,j),j=1,np),((-un(2,j)*sdx(j)+ut(2,j)*sdy(j)),j=1,nsides)
+              elseif(neqtide.gt.0) then
+                write(22,'(6(1x,e14.6))') (eqtide(j),j=1,ne)
+              endif
+            endif
+
 
             do j=1,ne
             ! and the elements
-              if(NEN(j,ncn).eq.0) then
-                NENtmp = NEN(j,ncn-1)
-              else
-                NENtmp = NEN(j,ncn)
+              do k=1,ncn
+                nen1(k,1) = nen(j,k)
+              enddo
+              if(NEN1(ncn,1).eq.0) then
+                NEN1(ncn,1) = NEN1(ncn-1,1)
               endif
-              write(22,*) (NEN(j,k),k=1,ncn-1),NENtmp
+!              write(*,*) j,i
+              if(outfileopt.eq.0) then
+                write(22,*) (NEN1(k,1),k=1,ncn)
+              elseif(outfileopt.eq.1) then
+                i = TECNODE142(ncn,nen1)
+              endif
             enddo
-          else 
-          ! append file
-            if(neMB.gt.0) then
-              write(22,"('ZONE D=(1,2,FECONNECT)')" )
-            else
-              write(22,"('ZONE D=(1,2,3,FECONNECT)')" )
-            endif
-
-            if(ncn.eq.3) then
-              write(22,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
-            elseif(ncn.eq.4) then
-              write(22,"(' ZONETYPE=FEQUADRILATERAL DATAPACKING=BLOCK')" )
-            endif
-
-            if(nsol.ne.0) then
-              if(iOPsol.eq.0) then
-                write(22,"(' VARLOCATION=([4,7]=CELLCENTERED)')" )
-              elseif(iOPsol.eq.1) then
-                write(22,"(' VARLOCATION=([4,7-8]=CELLCENTERED)')" )
-              elseif(iOPsol.eq.2) then
-                write(22,"(' VARLOCATION=([4,7-8]=CELLCENTERED)')" )
-              elseif(iOPsol.eq.3) then
-                write(22,"(' VARLOCATION=([4,7-9]=CELLCENTERED)')" )
-              endif
-            elseif(nson.ne.0) then
-              write(22,"(' VARLOCATION=([4,7,8]=CELLCENTERED)')" )
-            elseif(nsed.gt.0) then
-              write(22,"(' VARLOCATION=([4,7]=CELLCENTERED)')" )
-            elseif(neqtide.gt.0.or.neMB.gt.0) then
-              write(22,"(' VARLOCATION=([4,7]=CELLCENTERED)')" )
-            else
-              write(22,"(' VARLOCATION=([4]=CELLCENTERED)')" )
-            endif
-
-            write(22,*) ' SOLUTIONTIME=',TET
-
-            ! write the data
-            if(neMB.gt.0) then
-              write(22,'(6(1x,e14.6))') ((zp(j),j=1,np),(sbot(j),j=1,nsides),k=1,1) !z
-            endif
             
-            write(22,'(6(1x,e14.6))') (eta(j),j=1,ne)
+          else
+! *** append file
 
-            zero = 0.0
-            write(22,'(6(1x,e14.6))') ((uc(1,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,1)
-            write(22,'(6(1x,e14.6))') ((vc(1,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,1)
-
-            if(nson.gt.0) then
-              write(22,'(6(1x,e14.6))') (wz(1,j),j=1,ne)
-              write(22,'(6(1x,e14.6))') (qp(1,j),j=1,ne)
-            elseif(nsed.gt.0) then
-              write(22,'(6(1x,e14.6))') (cc(1,j),j=1,ne) !(dsg(j),j=1,ne)
-            elseif(nsol.ne.0) then
-              if(iOPsol.eq.0) then
-                write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
-              elseif(iOPsol.eq.1) then
-                write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
-                write(22,'(6(1x,e14.6))') (PSU(1,j),j=1,ne)
-              elseif(iOPsol.eq.2) then
-                write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
-                write(22,'(6(1x,e14.6))') (TC(1,j),j=1,ne)
-              elseif(iOPsol.eq.3) then
-                write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
-                write(22,'(6(1x,e14.6))') (PSU(1,j),j=1,ne)
-                write(22,'(6(1x,e14.6))') (TC(1,j),j=1,ne)
+            if(outfileopt.eq.0) then
+            
+              open(unit=22, file=OutResFile,status='old',position='append')
+              
+              if(neMB.gt.0) then
+                write(22,"('ZONE D=(1,2,FECONNECT)')" )
+              else
+                write(22,"('ZONE D=(1,2,3,FECONNECT)')" )
               endif
-            elseif(MBout.gt.0) then
-              write(22,'(6(1x,e14.6))') (etaMB(j),j=1,ne)
-              write(22,'(6(1x,e14.6))') (uc(2,j),j=1,np),(( un(2,j)*sdy(j)+ut(2,j)*sdx(j)),j=1,nsides)
-              write(22,'(6(1x,e14.6))') (vc(2,j),j=1,np),((-un(2,j)*sdx(j)+ut(2,j)*sdy(j)),j=1,nsides)
-            elseif(neqtide.gt.0) then
-              write(22,'(6(1x,e14.6))') (eqtide(j),j=1,ne)
+
+              if(ncn.eq.3) then
+                write(22,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
+              elseif(ncn.eq.4) then
+                write(22,"(' ZONETYPE=FEQUADRILATERAL DATAPACKING=BLOCK')" )
+              endif
+
+              if(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  write(22,"(' VARLOCATION=([4,7]=CELLCENTERED)')" )
+                elseif(iOPsol.eq.1) then
+                  write(22,"(' VARLOCATION=([4,7-8]=CELLCENTERED)')" )
+                elseif(iOPsol.eq.2) then
+                  write(22,"(' VARLOCATION=([4,7-8]=CELLCENTERED)')" )
+                elseif(iOPsol.eq.3) then
+                  write(22,"(' VARLOCATION=([4,7-9]=CELLCENTERED)')" )
+                endif
+              elseif(nson.ne.0) then
+                write(22,"(' VARLOCATION=([4,7,8]=CELLCENTERED)')" )
+              elseif(nsed.gt.0) then
+                write(22,"(' VARLOCATION=([4,7]=CELLCENTERED)')" )
+              elseif(neqtide.gt.0.or.neMB.gt.0) then
+                write(22,"(' VARLOCATION=([4,7]=CELLCENTERED)')" )
+              else
+                write(22,"(' VARLOCATION=([4]=CELLCENTERED)')" )
+              endif
+
+              write(22,*) ' SOLUTIONTIME=',TET
+            
+            elseif(outfileopt.eq.1) then
+
+              if(ncn.eq.3) then
+                ZoneType = 2
+              elseif(ncn.eq.4) then
+                ZoneType = 3
+              endif
+
+              VarLoc = 1
+              VarLoc(4) = 0
+              VarLoc(7:10) = 0
+              ShVar = 0
+              ShVar(1) = 1
+              ShVar(2) = 1
+              if(neMB.eq.0) then
+                ShVar(3) = 1
+              endif
+              PVLst = 0
+              ShCon = 1
+              
+              nptot = np + nsides
+              netot = ne
+              
+              i = TECZNE142(''//char(0),ZoneType,nptot,netot,i0,i0,i0,i0,&
+                            tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
+
+! *** write the data
+              if(neMB.gt.0) then
+                zpt(1:np) = zp(1:np)
+                do j=1,nsides
+                  xpt(np+j) = sxy(1,j)
+                  ypt(np+j) = sxy(2,j)
+                  zpt(np+j) = sbot(j)
+                enddo
+                i = TECDATD142(nptot,zpt)
+              endif
+              
+              i = TECDATD142(ne,eta)
+              
+              do j=1,np
+                uct(j) = uc(1,j)
+                vct(j) = vc(1,j)
+              enddo
+              do j=1,nsides
+                uct(np+j) =  un(1,j)*sdy(j)+ut(1,j)*sdx(j)
+                vct(np+j) = -un(1,j)*sdx(j)+ut(1,j)*sdy(j)
+              enddo
+              i = TECDATD142(nptot,uct)
+              i = TECDATD142(nptot,vct)
+            
+              if(nson.gt.0) then
+                i = TECDATD142(ne,wz)
+                i = TECDATD142(ne,qp)
+              elseif(nsed.gt.0) then
+                i = TECDATD142(ne,cc)
+              elseif(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  i = TECDATD142(ne,sigt)
+                elseif(iOPsol.eq.1) then
+                  i = TECDATD142(ne,sigt)
+                  i = TECDATD142(ne,PSU)
+                elseif(iOPsol.eq.2) then
+                  i = TECDATD142(ne,sigt)
+                  i = TECDATD142(ne,TC)
+                elseif(iOPsol.eq.3) then
+                  i = TECDATD142(ne,sigt)
+                  i = TECDATD142(ne,PSU)
+                  i = TECDATD142(ne,TC)
+                endif
+              elseif(MBout.gt.0) then
+                i = TECDATD142(ne,etaMB)
+                do j=1,np
+                  uct(j) = uc(2,j)
+                  vct(j) = vc(2,j)
+                enddo
+                do j=1,nsides
+                  uct(np+j) = un(2,j)*sdy(j)+ut(2,j)*sdx(j)
+                  vct(np+j) = -un(2,j)*sdx(j)+ut(2,j)*sdy(j)
+                enddo
+                i = TECDATD142(nptot,uct)
+                i = TECDATD142(nptot,vct)
+              elseif(neqtide.gt.0) then
+                i = TECDATD142(ne,eqtide)
+              endif
+            endif
+              
+            if(outfileopt.eq.0) then
+            
+              if(neMB.gt.0) then
+                write(22,'(6(1x,e14.6))') ((zp(j),j=1,np),(sbot(j),j=1,nsides),k=1,1) !z
+              endif
+              
+              write(22,'(6(1x,e14.6))') (eta(j),j=1,ne)
+
+              write(22,'(6(1x,e14.6))') ((uc(1,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,1)
+              write(22,'(6(1x,e14.6))') ((vc(1,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,1)
+
+              if(nson.gt.0) then
+               write(22,'(6(1x,e14.6))') (wz(1,j),j=1,ne)
+                write(22,'(6(1x,e14.6))') (qp(1,j),j=1,ne)
+              elseif(nsed.gt.0) then
+                write(22,'(6(1x,e14.6))') (cc(1,j),j=1,ne) !(dsg(j),j=1,ne)
+              elseif(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
+                elseif(iOPsol.eq.1) then
+                  write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
+                  write(22,'(6(1x,e14.6))') (PSU(1,j),j=1,ne)
+                elseif(iOPsol.eq.2) then
+                  write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
+                  write(22,'(6(1x,e14.6))') (TC(1,j),j=1,ne)
+                elseif(iOPsol.eq.3) then
+                  write(22,'(6(1x,e14.6))') (sigt(1,j),j=1,ne)
+                  write(22,'(6(1x,e14.6))') (PSU(1,j),j=1,ne)
+                  write(22,'(6(1x,e14.6))') (TC(1,j),j=1,ne)
+                endif
+              elseif(MBout.gt.0) then
+                do j=1,np
+                  uct(j) = uc(2,j)
+                  vct(j) = vc(2,j)
+                enddo
+                do j=1,nsides
+                  uct(np+j) =  un(2,j)*sdy(j)+ut(2,j)*sdx(j)
+                  vct(np+j) = -un(2,j)*sdx(j)+ut(2,j)*sdy(j)
+                enddo
+                write(22,'(6(1x,e14.6))') (etaMB(j),j=1,ne)
+                write(22,'(6(1x,e14.6))') (uc(2,j),j=1,np),(( un(2,j)*sdy(j)+ut(2,j)*sdx(j)),j=1,nsides)
+                write(22,'(6(1x,e14.6))') (vc(2,j),j=1,np),((-un(2,j)*sdx(j)+ut(2,j)*sdy(j)),j=1,nsides)
+              elseif(neqtide.gt.0) then
+                write(22,'(6(1x,e14.6))') (eqtide(j),j=1,ne)
+              endif
             endif
 
           endif
@@ -516,375 +780,615 @@
         CASE(3)  !eta, u, v interpolated to centroid. 2D.
 
 ! *** generate ut for output.
+
           if(npvb.lt.0) npvb = max(npv,min(2,2*max(0,izcoord-9)))
           Rn0(:,1:nsides) = un(:,1:nsides)
           call  GlobalQInterp ()
 
-!          if(nopttype.eq.1) then !write nodal eta for harmonic analysis
-!            write(22) TET,ne,ndf0,ndf0
-!            write(22) (eta(j),j=1,ne)
-
-!          elseif(nopttype.eq.2) then !write nodal eta,u,v for harmonic analysis
-!            write(22) TET,ne,nsides,npv
-!            write(22) (eta(j),j=1,ne)
-!            do k=1,npv
-!              write(22) (( un(k,j)*sdy(j)+Rn0(k,j)*sdx(j)),j=1,nsides)
-!              write(22) ((-un(k,j)*sdx(j)+Rn0(k,j)*sdy(j)),j=1,nsides)
-!            enddo
-
           if (noptcount.eq.0) then
-          ! first time through start new file
+! *** first time through start new file
             if(npv.gt.1) then
               if(nson.gt.0) then
-                write(22,*)'VARIABLES="X" "Y" "Z" "U" "V" "W" "Q" '
+                vars = 'X Y Z U V W Q'
               elseif(nsed.gt.0) then
-                write(22,*)'VARIABLES="X" "Y" "Z" "U" "V" "W" "S" '
+                vars = 'X Y Z U V W S'
               elseif(nsol.ne.0) then
                 if(iOPsol.eq.0) then
-                  write(22,*)'VARIABLES="X" "Y"  "Z" "U" "V" "W" "Sigt" '
+                  vars = 'X Y Z U V W Sigt'
                 elseif(iOPsol.eq.1) then
-                  write(22,*)'VARIABLES="X" "Y"  "Z" "U" "V" "W" "Sigt" "PSU" '
+                  vars = 'X Y Z U V W Sigt PSU'
                 elseif(iOPsol.eq.2) then
-                  write(22,*)'VARIABLES="X" "Y"  "Z" "U" "V" "W" "Sigt" "T" '
+                  vars = 'X Y Z U V W Sigt T'
                 elseif(iOPsol.eq.3) then
-                  write(22,*)'VARIABLES="X" "Y"  "Z" "U" "V" "W" "Sigt" "PSU" "T" '
+                  vars = 'X Y Z U V W Sigt PSU T'
                 endif
               else
-                write(22,*)'VARIABLES="X" "Y" "Z" "U" "V" "W" '
+                vars = 'X Y Z U V W'
               endif
             else
               if(nson.gt.0) then
-                write(22,*)'VARIABLES="X" "Y" "Z" "U" "V" "Q" '
+                vars = 'X Y Z U V Q'
               elseif(nsed.gt.0) then
-                write(22,*)'VARIABLES="X" "Y" "Z" "U" "V" "S" '
+                vars = 'X Y Z U V S'
               elseif(nsol.ne.0) then
                 if(iOPsol.eq.0) then
-                  write(22,*)'VARIABLES="X" "Y"  "Z" "U" "V" "Sigt" '
+                  vars = 'X Y Z U V Sigt'
                 elseif(iOPsol.eq.1) then
-                  write(22,*)'VARIABLES="X" "Y"  "Z" "U" "V" "Sigt" "PSU" '
+                  vars = 'X Y Z U V Sigt PSU'
                 elseif(iOPsol.eq.2) then
-                  write(22,*)'VARIABLES="X" "Y"  "Z" "U" "V" "Sigt" "T" '
+                  vars = 'X Y Z U V Sigt T'
                 elseif(iOPsol.eq.3) then
-                  write(22,*)'VARIABLES="X" "Y"  "Z" "U" "V" "Sigt" "PSU" "T" '
+                  vars = 'X Y Z U V Sigt PSU T'
                 endif
               else
-                write(22,*)'VARIABLES="X" "Y" "Z" "U" "V"'
+                vars = 'X Y Z U V'
               endif
             endif
+           
+            if(outfileopt.eq.0) then
+            
+              open(unit=22, file=OutResFile,status='unknown')
+            
+              write(22,*)'VARIABLES='//trim(vars)
       
-            if(npv.gt.1) then
-              write(22,"('ZONE N=',i7,' E=',i7 )" ) (np+nsides)*(npvC+1),ne*(npvC)
-            else
-              write(22,"('ZONE N=',i7,' E=',i7 )" ) (np+nsides)*2, ne
-            endif
+              if(npv.gt.1) then
+                write(22,"('ZONE N=',i7,' E=',i7 )" ) (np+nsides)*(npvC+1),ne*(npvC)
+              else
+                write(22,"('ZONE N=',i7,' E=',i7 )" ) (np+nsides)*2, ne
+              endif
 
-!            if(npv.gt.1) then
               write(22,"(' ZONETYPE=FEBRICK DATAPACKING=BLOCK')" )
-!            elseif(ncn.eq.3) then
-!              write(22,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
-!            elseif(ncn.eq.4) then
-!              write(22,"(' ZONETYPE=FEQUADRILATERAL DATAPACKING=BLOCK')" )
-!            endif
 
-            if(npv.gt.1) then
-              if(nsol.ne.0) then
-                if(iOPsol.eq.0) then
-                    write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.1) then
-                    write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.2) then
-                    write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.3) then
-                    write(22,"(' VARLOCATION=([6-9]=CELLCENTERED)')" )
+              if(npv.gt.1) then
+                if(nsol.ne.0) then
+                  if(iOPsol.eq.0) then
+                      write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.1) then
+                      write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.2) then
+                      write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.3) then
+                      write(22,"(' VARLOCATION=([6-9]=CELLCENTERED)')" )
+                  endif
+                else
+                  write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
                 endif
               else
-                write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
-              endif
-            else
-              if(nsol.ne.0) then
-                if(iOPsol.eq.0) then
-                    write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.1) then
-                    write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.2) then
-                    write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.3) then
-                    write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
+                if(nsol.ne.0) then
+                  if(iOPsol.eq.0) then
+                      write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.1) then
+                      write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.2) then
+                      write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.3) then
+                      write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
+                  endif
+                elseif(nsed.gt.0.or.nson.ne.0) then
+                  write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
+                else
+! *** none c cell centered
                 endif
-              elseif(nsed.gt.0.or.nson.ne.0) then
-                write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
-              else
-!                write(22,"(' VARLOCATION=([4]=CELLCENTERED)')" )
               endif
-            endif
 
-            write(22,*) ' SOLUTIONTIME=',TET
+              write(22,*) ' SOLUTIONTIME=',TET
+            
+            elseif(outfileopt.eq.1) then
+      
+              i = tecini142('Convert RiCOM bin to Tec360 plt'//char(0),&
+                            trim(vars)//char(0),&
+                            trim(OutResFile)//char(0),&
+                            './'//char(0),&
+                            ffmt,ftype,idbg,isdbl)
+      
+               
+              VarLoc = 1
+              VarLoc(6:10) = 0
+              ZoneType = 5
+              PVLst = 0
+              ShVar = 0
+              ShCon = 0
+              nptot = (np+nsides)*(npvC+1)
+              netot = ne*npvc
+              
+              i = TECZNE142('ZONE'//char(0),ZoneType,nptot,netot,i0,i0,i0,i0,&
+                          tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
+               
+! *** write x,y
 
-! write x,y
-            write(22,'(6(1x,1pe15.7))') ((xp(j),j=1,np),(sxy(1,j),j=1,nsides),k=1,max(2,npvC+1)) !x
-            write(22,'(6(1x,1pe15.7))') ((yp(j),j=1,np),(sxy(2,j),j=1,nsides),k=1,max(2,npvC+1)) !y
-
-            rhv = 0.
-            do nn=1,ne
-              ncn2 = ncn -1 + min0(1,nen(nn,ncn))
-              deptest = max(sdep(numsideT(1,nn)),sdep(numsideT(2,nn)),sdep(numsideT(3,nn)),sdep(numsideT(ncn2,nn)))
-              if(deptest.le.depmin) cycle
-              zncn = 1./dble(ncn2)
-              DO J=1,ncn2
-                MR = NEN(NN,J)
-                gamma(mr) = gamma(mr) + area(nn)*zncn
-                rhv(mr) = rhv(mr) + eta(nn)*area(nn)*zncn
+              nps = np + nsides
+              do k=1,npvc+1
+                do j=1,np
+                    xpt((k-1)*nps+j) = xp(j)
+                    ypt((k-1)*nps+j) = yp(j)
+                enddo
+                do j=1,nsides
+                    xpt(np+(k-1)*nps+j) = sxy(1,j)
+                    ypt(np+(k-1)*nps+j) = sxy(2,j)
+                enddo
               enddo
-            enddo
-            do j=1,np
-!              if(nbc(j).lt.0) then
-!                rhv(j) = spec(-nbc(j))
-              if(gamma(j).gt.0) then
-                rhv(j) = rhv(j)/gamma(j)
-              else
-                rhv(j) = zp(j)
-              endif
-            enddo
+              i = TECDATD142(nptot,xpt)
+              i = TECDATD142(nptot,ypt)
+            
+              rhv = 0.
+              do nn=1,ne
+                ncn2 = ncn -1 + min0(1,nen(nn,ncn))
+                deptest = max(sdep(numsideT(1,nn)),sdep(numsideT(2,nn)),sdep(numsideT(3,nn)),sdep(numsideT(ncn2,nn)))
+                if(deptest.le.depmin) cycle
+                zncn = 1./dble(ncn2)
+                DO J=1,ncn2
+                  MR = NEN(NN,J)
+                  gamma(mr) = gamma(mr) + area(nn)*zncn
+                  rhv(mr) = rhv(mr) + eta(nn)*area(nn)*zncn
+                enddo
+              enddo
+              do j=1,np
+!                if(nbc(j).lt.0) then
+!                  rhv(j) = spec(-nbc(j))
+                if(gamma(j).gt.0) then
+                  rhv(j) = rhv(j)/gamma(j)
+                else
+                  rhv(j) = zp(j)
+                endif
+              enddo
                        
 ! *** write z
-            if(npv.gt.1) then
-              if(izcoord.eq.0.or.izcoord.eq.2) then
-                do k=1,npvC+1
-                  write(22,'(6(1x,e14.6))') (-zp(j)*zdep(k),j=1,np),(sdep(j)*zdep(k),j=1,nsides) !z
-                enddo
-              elseif(izcoord.eq.1.or.izcoord.eq.3) then
-                do k=1,izgrid-1
-                  write(22,'(6(1x,e14.6))') (-max(zp(j),zdep(izgrid))*zdep(k),j=1,np),&
-                            (-max(sbot(j),zdep(izgrid))*zdep(k),j=1,nsides) !z
-                enddo
-                do k=izgrid,npvC+1
-                  write(22,'(6(1x,e14.6))') (max(zp(j),zdep(k)),j=1,np),&
-                             (max(sbot(j),zdep(k)),j=1,nsides) !z
-                enddo
-              endif
-            elseif(neMB.gt.0) then
-              write(22,'(6(1x,e14.6))') (rhv(j),j=1,np),(-sdep(j),j=1,nsides) !surface
-              write(22,'(6(1x,e14.6))') (zp(j),j=1,np),(-sdep(j),j=1,nsides) !etaMB
-            else
-              write(22,'(6(1x,e14.6))') (rhv(j),j=1,np),(-sdep(j),j=1,nsides) !eta
-              write(22,'(6(1x,e14.6))') (zp(j),j=1,np),(sbot(j),j=1,nsides) !z
-            endif
 
-! *** write u
-            zero = 0.0
-            write(22,'(6(1x,e14.6))') ((uc(k,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,npv)
-            if(izcoord.ge.2) then
-              write(22,'(6(1x,e14.6))') (zero,j=1,np),(zero,j=1,nsides)
-            endif
-            if(npv.eq.1) then
-                write(22,'(6(1x,e14.6))') ((uc(k,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,npv)
-            endif
-
-! *** write v
-            write(22,'(6(1x,e14.6))') ((vc(k,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,npv)
-            if(izcoord.ge.2) then
-              write(22,'(6(1x,e14.6))') (zero,j=1,np),(zero,j=1,nsides)
-            endif
-            if(npv.eq.1) then
-              write(22,'(6(1x,e14.6))') ((vc(k,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,npv)
-            endif
-
-! *** write w
-            if(npv.gt.1) then
-              write(22,'(6(1x,e14.6))') ((wz(k,j),k=1,npvC),j=1,ne)
-            endif
-
-! *** write scalar variables
-            npvm = max(1,npvC)
-            if(nson.gt.0) then
-              write(22,'(6(1x,e14.6))') ((qp(k,j),k=1,npvm),j=1,ne)
-            elseif(nsed.gt.0) then
-              write(22,'(6(1x,e14.6))') ((cc(k,j),k=1,npvm+1),j=1,ne)
-            elseif(nsol.ne.0) then
-              if(iOPsol.eq.0) then
-                write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
-              elseif(iOPsol.eq.1) then
-                write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
-                write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,npvm),j=1,ne)
-              elseif(iOPsol.eq.2) then
-                write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
-                write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,npvm),j=1,ne)
-              elseif(iOPsol.eq.3) then
-                write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
-                write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,npvm),j=1,ne)
-                write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,npvm),j=1,ne)
-              endif
-            endif
-
-            ! and the elements
-
-!            write(*,*) ' writing elements, kmin=', kmin
-
-            if(npv.gt.1) then
-              nps = np + nsides
-              do j=1,ne
-              ! and the elements
-                if(ncn.eq.4.and.NEN(j,ncn).eq.0) then
-                  NENtmp = NEN(j,ncn-1)
-                else
-                  NENtmp = NEN(j,ncn)
+              if(npv.gt.1) then
+                if(izcoord.eq.0.or.izcoord.eq.2) then
+                  do k=1,npvc+1
+                    do j=1,np
+                      zpt((k-1)*nps+j) = -zp(j)*zdep(k)
+                    enddo
+                    do j=1,nsides
+                      zpt(np+(k-1)*nps+j) = -sbot(j)*zdep(k)
+                    enddo
+                  enddo
+                  i = TECDATD142(nptot,zpt)
+                  
+                elseif(izcoord.eq.1.or.izcoord.eq.3) then
+                  do k=1,izgrid-1
+                    do j=1,np
+                      zpt((k-1)*nps+j) = -max(zp(j),zdep(izgrid))*zdep(k)
+                    enddo
+                    do j=1,nsides
+                      zpt(np+(k-1)*nps+j) = -max(sbot(j),zdep(izgrid))*zdep(k)
+                    enddo
+                  enddo
+                  do k=izgrid,npvc+1
+                    do j=1,np
+                      zpt((k-1)*nps+j) = max(zp(j),zdep(k))
+                    enddo
+                    do j=1,nsides
+                      zpt(np+(k-1)*nps+j) = max(sbot(j),zdep(k))
+                    enddo
+                  enddo
+                  i = TECDATD142(nptot,zpt)
+                  
                 endif
-                do kv=1,npvC
-                  write(22,'(8(1x,I8))') (NEN(j,k)+kv*nps,k=1,3),NENtmp+kv*nps,(NEN(j,k)+(kv-1)*nps,k=1,3),NENtmp+(kv-1)*nps
+              endif
+
+! *** write u,v
+
+              uct = 0.D0
+              vct = 0.D0
+              do k=1,npv
+                do j=1,np
+                  uct((k-1)*nps+j) = uc(k,j)
+                  vct((k-1)*nps+j) = vc(k,j)
+                enddo
+                do j=1,nsides
+                  uct(np+(k-1)*nps+j) =  un(k,j)*sdy(j)+ut(k,j)*sdx(j)
+                  vct(np+(k-1)*nps+j) = -un(k,j)*sdx(j)+ut(k,j)*sdy(j)
                 enddo
               enddo
-            else
+              i = TECDATD142(nptot,uct)
+              i = TECDATD142(nptot,vct)
+              
+! *** write w
+              if(npv.gt.1) then
+                i = TECDATD142(netot,wz)
+              endif
+
+! *** write scalar variables
+              npvm = max(1,npvC)
+              if(nson.gt.0) then
+                i = TECDATD142(netot,qp)
+              elseif(nsed.gt.0) then
+                i = TECDATD142(netot,cc)
+              elseif(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  i = TECDATD142(netot,sigt)
+                elseif(iOPsol.eq.1) then
+                  i = TECDATD142(netot,sigt)
+                  i = TECDATD142(netot,PSU)
+                elseif(iOPsol.eq.2) then
+                  i = TECDATD142(netot,sigt)
+                  i = TECDATD142(netot,TC)
+                elseif(iOPsol.eq.3) then
+                  i = TECDATD142(netot,sigt)
+                  i = TECDATD142(netot,PSU)
+                  i = TECDATD142(netot,TC)
+                endif
+              endif
+
+! *** and the elements
+
               nps = np + nsides
               do j=1,ne
-                if(NEN(j,ncn).eq.0) then
-                  NENtmp = NEN(j,ncn-1)
-                else
-                  NENtmp = NEN(j,ncn)
+                do k=1,ncn
+                  nen1(k,1) = nen(j,k)
+                enddo
+                if(NEN1(ncn,1).eq.0) then
+                  NEN1(ncn,1) = NEN1(ncn-1,1)
                 endif
-                kv=1
-                write(22,'(8(1x,I8))') (NEN(j,k)+kv*nps,k=1,3),NENtmp+kv*nps,(NEN(j,k)+(kv-1)*nps,k=1,3),NENtmp+(kv-1)*nps
+                NENtmp = NEN1(ncn,1)
+                do kv=1,npvC
+                  do k=1,4
+                    nen3(k,1) = NEN1(k,1)+kv*nps
+                    nen3(k+4,1) = NEN1(k,1)+(kv-1)*nps
+                  enddo
+                  i = TECNODE142(i8,nen3)
+                enddo
+              enddo
+              
+            endif
+            
+            if(outfileopt.eq.0) then
+
+! *** write x,y
+
+              write(22,'(6(1x,1pe15.7))') ((xp(j),j=1,np),(sxy(1,j),j=1,nsides),k=1,max(2,npvC+1)) !x
+              write(22,'(6(1x,1pe15.7))') ((yp(j),j=1,np),(sxy(2,j),j=1,nsides),k=1,max(2,npvC+1)) !y
+
+! *** write z
+
+              if(npv.gt.1) then
+                if(izcoord.eq.0.or.izcoord.eq.2) then                
+                  do k=1,npvC+1
+                    write(22,'(6(1x,e14.6))') (-zp(j)*zdep(k),j=1,np),(-sbot(j)*zdep(k),j=1,nsides) !z
+                  enddo
+                elseif(izcoord.eq.1.or.izcoord.eq.3) then
+                  do k=1,izgrid-1
+                    write(22,'(6(1x,e14.6))') (-max(zp(j),zdep(izgrid))*zdep(k),j=1,np),&
+                              (-max(sbot(j),zdep(izgrid))*zdep(k),j=1,nsides) !z
+                  enddo
+                  do k=izgrid,npvC+1
+                    write(22,'(6(1x,e14.6))') (max(zp(j),zdep(k)),j=1,np),&
+                               (max(sbot(j),zdep(k)),j=1,nsides) !z
+                  enddo
+                endif
+                
+              elseif(neMB.gt.0) then
+                write(22,'(6(1x,e14.6))') (rhv(j),j=1,np),(-sdep(j),j=1,nsides) !surface
+                write(22,'(6(1x,e14.6))') (zp(j),j=1,np),(-sdep(j),j=1,nsides) !etaMB
+              else
+                write(22,'(6(1x,e14.6))') (rhv(j),j=1,np),(-sdep(j),j=1,nsides) !eta
+                write(22,'(6(1x,e14.6))') (zp(j),j=1,np),(sbot(j),j=1,nsides) !z
+              endif
+              
+              zero = 0.0
+              write(22,'(6(1x,e14.6))') ((uc(k,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,npv)
+              if(izcoord.ge.2) then
+                write(22,'(6(1x,e14.6))') (zero,j=1,np),(zero,j=1,nsides)
+              endif
+              if(npv.eq.1) then
+                  write(22,'(6(1x,e14.6))') ((uc(k,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,npv)
+              endif
+
+! *** write v
+              write(22,'(6(1x,e14.6))') ((vc(k,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,npv)
+              if(izcoord.ge.2) then
+                write(22,'(6(1x,e14.6))') (zero,j=1,np),(zero,j=1,nsides)
+              endif
+              if(npv.eq.1) then
+                write(22,'(6(1x,e14.6))') ((vc(k,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,npv)
+              endif
+
+! *** write w
+              if(npv.gt.1) then
+                write(22,'(6(1x,e14.6))') ((wz(k,j),k=1,npvC),j=1,ne)
+              endif
+
+! *** write scalar variables
+              npvm = max(1,npvC)
+              if(nson.gt.0) then
+                write(22,'(6(1x,e14.6))') ((qp(k,j),k=1,npvm),j=1,ne)
+              elseif(nsed.gt.0) then
+                write(22,'(6(1x,e14.6))') ((cc(k,j),k=1,npvm+1),j=1,ne)
+              elseif(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
+                elseif(iOPsol.eq.1) then
+                  write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
+                  write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,npvm),j=1,ne)
+                elseif(iOPsol.eq.2) then
+                  write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
+                  write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,npvm),j=1,ne)
+                elseif(iOPsol.eq.3) then
+                  write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
+                  write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,npvm),j=1,ne)
+                  write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,npvm),j=1,ne)
+                endif
+              endif
+
+! *** and the elements
+
+              nps = np + nsides
+              do j=1,ne
+                do k=1,ncn
+                  nen1(k,1) = nen(j,k)
+                enddo
+                if(NEN1(ncn,1).eq.0) then
+                  NEN1(ncn,1) = NEN1(ncn-1,1)
+                endif
+                NENtmp = NEN1(ncn,1)
+                do kv=1,npvC
+                  do k=1,4
+                    nen3(k,1) = NEN1(k,1)+kv*nps
+                    nen3(k+4,1) = NEN1(k,1)+(kv-1)*nps
+                  enddo
+                 write(22,'(8(1x,I8))') (NEN3(k,1),k=1,8)
+                enddo
               enddo
             endif
 
           else 
-          ! append file
-            write(22,"('ZONE D=(1,2,FECONNECT)')" ) 
+! *** append to file
 
-!            if(npv.gt.1) then
+            if(outfileopt.eq.0) then
+            
+              open(unit=22, file=OutResFile,status='old',position='append')
+              
+              write(22,"('ZONE D=(1,2,FECONNECT)')" ) 
+
               write(22,"(' ZONETYPE=FEBRICK DATAPACKING=BLOCK')" )
-!            elseif(ncn.eq.3) then
-!              write(22,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
-!            elseif(ncn.eq.4) then
-!              write(22,"(' ZONETYPE=FEQUADRILATERAL DATAPACKING=BLOCK')" )
-!            endif
 
-            if(npv.gt.1) then
-              if(nsol.ne.0) then
-                if(iOPsol.eq.0) then
-                    write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.1) then
-                    write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.2) then
-                    write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.3) then
-                    write(22,"(' VARLOCATION=([6-9]=CELLCENTERED)')" )
+              if(npv.gt.1) then
+                if(nsol.ne.0) then
+                  if(iOPsol.eq.0) then
+                      write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.1) then
+                      write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.2) then
+                      write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.3) then
+                      write(22,"(' VARLOCATION=([6-9]=CELLCENTERED)')" )
+                  endif
+                else
+                  write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
                 endif
               else
-                write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
-              endif
-            else
-              if(nsol.ne.0) then
-                if(iOPsol.eq.0) then
-                    write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.1) then
-                    write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.2) then
-                    write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
-                elseif(iOPsol.eq.3) then
-                    write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
+                if(nsol.ne.0) then
+                  if(iOPsol.eq.0) then
+                      write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.1) then
+                      write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.2) then
+                      write(22,"(' VARLOCATION=([6-7]=CELLCENTERED)')" )
+                  elseif(iOPsol.eq.3) then
+                      write(22,"(' VARLOCATION=([6-8]=CELLCENTERED)')" )
+                  endif
+                elseif(nsed.gt.0.or.nson.ne.0) then
+                  write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
+                else
+! *** none cell centered
                 endif
-              elseif(nsed.gt.0.or.nson.ne.0) then
-                write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
-              else
-!                write(22,"(' VARLOCATION=([6]=CELLCENTERED)')" )
               endif
-            endif
 
-            write(22,*) ' SOLUTIONTIME=',TET
+              write(22,*) ' SOLUTIONTIME=',TET
+            
+            elseif(outfileopt.eq.1) then
+            
+              VarLoc = 1
+              VarLoc(6:10) = 0
+              ZoneType = 5
+              PVLst = 0
+              ShVar = 0
+              ShVar(1) = 1
+              ShVar(2) = 1
+              ShCon = 1
+              nptot = (np+nsides)*(npvC+1)
+              netot = ne*npvc
+              
+              i = TECZNE142('ZONE'//char(0),ZoneType,nptot,netot,i0,i0,i0,i0,&
+                            tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
 
-            ! write the data
-!            if(npv.eq.1) write(22,'(6(1x,e14.6))') (eta(j),j=1,ne)
-
-            rhv = 0.
-            gamma = 0.
-            do nn=1,ne
-              ncn2 = ncn -1 + min0(1,nen(nn,ncn))
-!              deptest = max(sdep(numsideT(1,nn)),sdep(numsideT(2,nn)),sdep(numsideT(3,nn)),sdep(numsideT(ncn2,nn)))
-!              if(deptest.le.depmin) cycle
-!              zncn = 1./dble(ncn2)
-              DO J=1,ncn2
-                MR = NEN(NN,J)
-                gamma(mr) = gamma(mr) + area(nn) !*zncn
-                rhv(mr) = rhv(mr) + eta(nn)*area(nn) !*zncn
+              rhv = 0.
+              gamma = 0.
+              do nn=1,ne
+                ncn2 = ncn -1 + min0(1,nen(nn,ncn))
+                DO J=1,ncn2
+                  MR = NEN(NN,J)
+                  gamma(mr) = gamma(mr) + area(nn)
+                  rhv(mr) = rhv(mr) + eta(nn)*area(nn)
+                enddo
               enddo
-            enddo
-            do j=1,np
-!              if(nbc(j).lt.0) then
-!                rhv(j) = spec(-nbc(j))
-              if(gamma(j).gt.0) then
-                rhv(j) = rhv(j)/gamma(j)
-              else
-                rhv(j) = zp(j)
-              endif
-            enddo
+              do j=1,np
+!                if(nbc(j).lt.0) then
+!                  rhv(j) = spec(-nbc(j))
+                if(gamma(j).gt.0) then
+                  rhv(j) = rhv(j)/gamma(j)
+                else
+                  rhv(j) = zp(j)
+                endif
+              enddo
                        
 ! *** write z
-            if(npv.gt.1) then
+
+              nps = np + nsides
               if(izcoord.eq.0.or.izcoord.eq.2) then
-                do k=1,npvC+1
-                  write(22,'(6(1x,e14.6))') (-zp(j)*zdep(k),j=1,np),(sdep(j)*zdep(k),j=1,nsides) !z
+                do k=1,npvc+1
+                  do j=1,np
+                    zpt((k-1)*nps+j) = -zp(j)*zdep(k)
+                  enddo
+                  do j=1,nsides
+                    zpt(np+(k-1)*nps+j) = -sbot(j)*zdep(k)
+                  enddo
                 enddo
+                i = TECDATD142(nptot,zpt)
+                
               elseif(izcoord.eq.1.or.izcoord.eq.3) then
                 do k=1,izgrid-1
-                  write(22,'(6(1x,e14.6))') (-max(zp(j),zdep(izgrid))*zdep(k),j=1,np),&
-                            (-max(sbot(j),zdep(izgrid))*zdep(k),j=1,nsides) !z
+                  do j=1,np
+                    zpt((k-1)*nps+j) = -max(zp(j),zdep(izgrid))*zdep(k)
+                  enddo
+                  do j=1,nsides
+                    zpt(np+(k-1)*nps+j) = -max(sbot(j),zdep(izgrid))*zdep(k)
+                  enddo
                 enddo
-                do k=izgrid,npvC+1
-                  write(22,'(6(1x,e14.6))') (max(zp(j),zdep(k)),j=1,np),&
-                             (max(sbot(j),zdep(k)),j=1,nsides) !z
+                do k=izgrid,npvc+1
+                  do j=1,np
+                    zpt((k-1)*nps+j) = max(zp(j),zdep(k))
+                  enddo
+                  do j=1,nsides
+                    zpt(np+(k-1)*nps+j) = max(sbot(j),zdep(k))
+                  enddo
                 enddo
+                i = TECDATD142(nptot,zpt)
               endif
-            elseif(neMB.gt.0) then
-              write(22,'(6(1x,e14.6))') (rhv(j),j=1,np),(-sdep(j),j=1,nsides) !eta
-              write(22,'(6(1x,e14.6))') (zp(j),j=1,np),(-sdep(j),j=1,nsides) !etaMB
-            else
-              write(22,'(6(1x,e14.6))') (rhv(j),j=1,np),(-sdep(j),j=1,nsides) !eta
-              write(22,'(6(1x,e14.6))') (zp(j),j=1,np),(sbot(j),j=1,nsides) !z
-            endif
+                
+! *** write u,v
 
-! *** write u
-            zero = 0.0
-            write(22,'(6(1x,e14.6))') ((uc(k,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,npv)
-            if(izcoord.ge.2) then
-              write(22,'(6(1x,e14.6))') (zero,j=1,np),(zero,j=1,nsides)
-            endif
-            if(npv.eq.1) then
-                write(22,'(6(1x,e14.6))') ((uc(k,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,npv)
-            endif
-
-! *** write v
-            write(22,'(6(1x,e14.6))') ((vc(k,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,npv)
-            if(izcoord.ge.2) then
-              write(22,'(6(1x,e14.6))') (zero,j=1,np),(zero,j=1,nsides)
-            endif
-            if(npv.eq.1) then
-              write(22,'(6(1x,e14.6))') ((vc(k,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,npv)
-            endif
+              uct = 0.D0
+              vct = 0.D0
+              do k=1,npv
+                do j=1,np
+                  uct((k-1)*nps+j) = uc(k,j)
+                  vct((k-1)*nps+j) = vc(k,j)
+                enddo
+                do j=1,nsides
+                  uct(np+(k-1)*nps+j) =  un(k,j)*sdy(j)+ut(k,j)*sdx(j)
+                  vct(np+(k-1)*nps+j) = -un(k,j)*sdx(j)+ut(k,j)*sdy(j)
+                enddo
+              enddo
+              i = TECDATD142(nptot,uct)
+              i = TECDATD142(nptot,vct)
 
 ! *** write w
-            if(npv.gt.1) then
-              write(22,'(6(1x,e14.6))') ((wz(k,j),k=1,npvC),j=1,ne)
-            endif
+              if(npv.gt.1) then
+               i = TECDATD142(netot,wz)
+              endif
 
 ! *** write scalar variables
-            npvm = max(1,npvC)
-            if(nson.gt.0) then
-              write(22,'(6(1x,e14.6))') ((qp(k,j),k=1,npvm),j=1,ne)
-            elseif(nsed.gt.0) then
-              write(22,'(6(1x,e14.6))') ((cc(k,j),k=1,npvm+1),j=1,ne)
-            elseif(nsol.ne.0) then
-              if(iOPsol.eq.0) then
-                write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
-              elseif(iOPsol.eq.1) then
-                write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
-                write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,npvm),j=1,ne)
-              elseif(iOPsol.eq.2) then
-                write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
-                write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,npvm),j=1,ne)
-              elseif(iOPsol.eq.3) then
-                write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
-                write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,npvm),j=1,ne)
-                write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,npvm),j=1,ne)
+              npvm = max(1,npvC)
+              if(nson.gt.0) then
+                i = TECDATD142(netot,qp)
+              elseif(nsed.gt.0) then
+                i = TECDATD142(netot,cc)
+              elseif(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  i = TECDATD142(netot,sigt)
+                elseif(iOPsol.eq.1) then
+                  i = TECDATD142(netot,sigt)
+                  i = TECDATD142(netot,PSU)
+                elseif(iOPsol.eq.2) then
+                  i = TECDATD142(netot,sigt)
+                  i = TECDATD142(netot,TC)
+                elseif(iOPsol.eq.3) then
+                  i = TECDATD142(netot,sigt)
+                  i = TECDATD142(netot,PSU)
+                  i = TECDATD142(netot,TC)
+                endif
+              endif
+            endif
+            
+            if(outfileopt.eq.0) then
+
+! *** write x,y
+
+ !             write(22,'(6(1x,1pe15.7))') ((xp(j),j=1,np),(sxy(1,j),j=1,nsides),k=1,max(2,npvC+1)) !x
+ !             write(22,'(6(1x,1pe15.7))') ((yp(j),j=1,np),(sxy(2,j),j=1,nsides),k=1,max(2,npvC+1)) !y
+
+! *** write z
+
+               rhv = 0.
+               gamma = 0.
+               do nn=1,ne
+                 ncn2 = ncn -1 + min0(1,nen(nn,ncn))
+                 DO J=1,ncn2
+                   MR = NEN(NN,J)
+                   gamma(mr) = gamma(mr) + area(nn)
+                   rhv(mr) = rhv(mr) + eta(nn)*area(nn)
+                 enddo
+               enddo
+               do j=1,np
+!                 if(nbc(j).lt.0) then
+!                   rhv(j) = spec(-nbc(j))
+                 if(gamma(j).gt.0) then
+                   rhv(j) = rhv(j)/gamma(j)
+                 else
+                   rhv(j) = zp(j)
+                 endif
+               enddo
+            
+               if(npv.gt.1) then
+                if(izcoord.eq.0.or.izcoord.eq.2) then                
+                  do k=1,npvC+1
+                    write(22,'(6(1x,e14.6))') (-zp(j)*zdep(k),j=1,np),(-sbot(j)*zdep(k),j=1,nsides) !z
+                  enddo
+                elseif(izcoord.eq.1.or.izcoord.eq.3) then
+                  do k=1,izgrid-1
+                    write(22,'(6(1x,e14.6))') (-max(zp(j),zdep(izgrid))*zdep(k),j=1,np),&
+                              (-max(sbot(j),zdep(izgrid))*zdep(k),j=1,nsides) !z
+                  enddo
+                  do k=izgrid,npvC+1
+                    write(22,'(6(1x,e14.6))') (max(zp(j),zdep(k)),j=1,np),&
+                               (max(sbot(j),zdep(k)),j=1,nsides) !z
+                  enddo
+                endif
+                
+              elseif(neMB.gt.0) then
+                write(22,'(6(1x,e14.6))') (rhv(j),j=1,np),(-sdep(j),j=1,nsides) !surface
+                write(22,'(6(1x,e14.6))') (zp(j),j=1,np),(-sdep(j),j=1,nsides) !etaMB
+              else
+                write(22,'(6(1x,e14.6))') (rhv(j),j=1,np),(-sdep(j),j=1,nsides) !eta
+                write(22,'(6(1x,e14.6))') (zp(j),j=1,np),(sbot(j),j=1,nsides) !z
+              endif
+              
+              zero = 0.0
+              write(22,'(6(1x,e14.6))') ((uc(k,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,npv)
+              if(izcoord.ge.2) then
+                write(22,'(6(1x,e14.6))') (zero,j=1,np),(zero,j=1,nsides)
+              endif
+              if(npv.eq.1) then
+                  write(22,'(6(1x,e14.6))') ((uc(k,j),j=1,np),(( un(k,j)*sdy(j)+ut(k,j)*sdx(j)),j=1,nsides),k=1,npv)
+              endif
+
+! *** write v
+              write(22,'(6(1x,e14.6))') ((vc(k,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,npv)
+              if(izcoord.ge.2) then
+                write(22,'(6(1x,e14.6))') (zero,j=1,np),(zero,j=1,nsides)
+              endif
+              if(npv.eq.1) then
+                write(22,'(6(1x,e14.6))') ((vc(k,j),j=1,np),((-un(k,j)*sdx(j)+ut(k,j)*sdy(j)),j=1,nsides),k=1,npv)
+              endif
+
+! *** write w
+              if(npv.gt.1) then
+                write(22,'(6(1x,e14.6))') ((wz(k,j),k=1,npvC),j=1,ne)
+              endif
+
+! *** write scalar variables
+              npvm = max(1,npvC)
+              if(nson.gt.0) then
+                write(22,'(6(1x,e14.6))') ((qp(k,j),k=1,npvm),j=1,ne)
+              elseif(nsed.gt.0) then
+                write(22,'(6(1x,e14.6))') ((cc(k,j),k=1,npvm+1),j=1,ne)
+              elseif(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
+                elseif(iOPsol.eq.1) then
+                  write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
+                  write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,npvm),j=1,ne)
+                elseif(iOPsol.eq.2) then
+                  write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
+                  write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,npvm),j=1,ne)
+                elseif(iOPsol.eq.3) then
+                  write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
+                  write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,npvm),j=1,ne)
+                  write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,npvm),j=1,ne)
+                endif
               endif
             endif
 
@@ -898,16 +1402,47 @@
 
           ! first time through start new file
 
-            write(22,*)'VARIABLES="X" "Y" "Z" "ECode" "EMAX" "EMIN" "SMAX" "T1" "TWET"'
+            if(outfileopt.eq.0) then
+            
+              open(unit=22, file=OutMaxFile,status='unknown')
+              
+              write(22,*)'VARIABLES="X" "Y" "Z" "ECode" "EMAX" "EMIN" "SMAX" "T1" "TWET"'
 
-            if(ncn.eq.3) then
-              write(22,"('ZONE N=',i7,' E=',i7 )" ) np,ne
-              write(22,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
-              write(22,"(' VARLOCATION=([4-9]=CELLCENTERED)')" )
-            elseif(ncn.eq.4) then
-              write(22,"('ZONE N=',i7,' E=',i7 )" ) np,ne
-              write(22,"(' ZONETYPE=FEQUADRILATERAL DATAPACKING=BLOCK')" )
-              write(22,"(' VARLOCATION=([4-9]=CELLCENTERED)')" )
+              if(ncn.eq.3) then
+                write(22,"('ZONE N=',i7,' E=',i7 )" ) np,ne
+                write(22,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
+                write(22,"(' VARLOCATION=([4-9]=CELLCENTERED)')" )
+              elseif(ncn.eq.4) then
+                write(22,"('ZONE N=',i7,' E=',i7 )" ) np,ne
+                write(22,"(' ZONETYPE=FEQUADRILATERAL DATAPACKING=BLOCK')" )
+                write(22,"(' VARLOCATION=([4-9]=CELLCENTERED)')" )
+              endif
+      
+            elseif(outfileopt.eq.1) then
+            
+              vars = 'X Y Z ECode EMAX EMIN SMAX T1 TWET'
+              
+              i = tecini142('Convert RiCOM bin to Tec360 plt'//char(0),&
+                            trim(vars)//char(0),&
+                            trim(OutMaxFile)//char(0),&
+                            './'//char(0),&
+                            ffmt,ftype,idbg,isdbl)
+              
+              if(ncn.eq.3) then
+                ZoneType = 2
+              elseif(ncn.eq.4) then
+                ZoneType = 3
+              endif
+
+              VarLoc=1
+              VarLoc(4:9)=0
+              PVLst = 0
+              ShVar = 0
+              ShCon = 0
+              
+              i = TECZNE142('zone'//char(0),ZoneType,np,ne,i0,i0,i0,i0,&
+                            tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
+                          
             endif
 
             !set original coordinates if icoord>0
@@ -920,15 +1455,25 @@
                 rhv(j) = xp(j)*bigrcI 
                 gamma(j) = yp(j)*bigrI
               enddo
-              write(22,'(6(1x,e14.6))') (rhv(j),j=1,np)
-              write(22,'(6(1x,e14.6))') (gamma(j),j=1,np)
-              write(22,'(6(1x,e14.6))') (zp(j),j=1,np)
+              if(outfileopt.eq.0) then
+                write(22,'(6(1x,e14.6))') (rhv(j),j=1,np)
+                write(22,'(6(1x,e14.6))') (gamma(j),j=1,np)
+                write(22,'(6(1x,e14.6))') (zp(j),j=1,np)
+              elseif(outfileopt.eq.1) then
+                i = TECDATD142(np,rhv)
+                i = TECDATD142(np,gamma)
+                i = TECDATD142(np,zp)
+              endif
             else
-!              x00 = 0.
-!              y00 = 0.
-              write(22,'(6(1x,e14.6))') (xp(j),j=1,np)
-              write(22,'(6(1x,e14.6))') (yp(j),j=1,np)
-              write(22,'(6(1x,e14.6))') (zp(j),j=1,np)
+              if(outfileopt.eq.0) then
+                write(22,'(6(1x,e14.6))') (xp(j),j=1,np)
+                write(22,'(6(1x,e14.6))') (yp(j),j=1,np)
+                write(22,'(6(1x,e14.6))') (zp(j),j=1,np)
+              elseif(outfileopt.eq.1) then
+                i = TECDATD142(np,xp)
+                i = TECDATD142(np,yp)
+                i = TECDATD142(np,zp)
+              endif
             endif
 
             Rn0 = 0.
@@ -941,65 +1486,47 @@
               if(deptest.gt.depmin) then
                 uu = (umax(numsideT(1,j))+umax(numsideT(2,j))+umax(numsideT(3,j)))/3.
                 vv = (vmax(numsideT(1,j))+vmax(numsideT(2,j))+vmax(numsideT(3,j)))/3.
-                Rn0(1,j)= sqrt(uu**2 + vv**2)
+                Rhv(j)= sqrt(uu**2 + vv**2)
               endif
             enddo
+            
+            gamma(1:ne) = dble(IECode(1:ne))
 
-            write(22,'(6(1x,i5))') (IECode(j),j=1,ne)
-            write(22,'(6(1x,e14.6))') (emax(j),j=1,ne)
-            write(22,'(6(1x,e14.6))') (emin(j),j=1,ne)
-            write(22,'(6(1x,e14.6))') (Rn0(1,j),j=1,ne)
-!            write(22,'(6(1x,e14.6))') (umax(j),j=1,nsides)
-!            write(22,'(6(1x,e14.6))') (vmax(j),j=1,nsides)
-            write(22,'(6(1x,e14.6))') (t1(j),j=1,ne)
-            write(22,'(6(1x,e14.6))') (twet(j),j=1,ne)
-
-            ! and the elements
-            do j=1,ne
-              if(NEN(j,ncn).eq.0) then
-                NENtmp = NEN(j,ncn-1)
-              else
-                NENtmp = NEN(j,ncn)
-              endif
-              write(22,*) (NEN(j,k),k=1,ncn-1),NENtmp
-            enddo
-          
-          else 
-
-          ! append file
-            if(ncn.eq.3) then
-              write(22,"('ZONE D=(1,2,3,FECONNECT)')" ) 
-              write(22,"(' ZONETYPE=FETRIANGLE DATAPACKING=BLOCK')" )
-              write(22,"(' VARLOCATION=([4-9]=CELLCENTERED)')" )
-            elseif(ncn.eq.4) then
-              write(22,"('ZONE D=(1,2,3,FECONNECT)')" ) 
-              write(22,"(' ZONETYPE=FEQUADRILATERAL DATAPACKING=BLOCK')" )
-              write(22,"(' VARLOCATION=([4-9]=CELLCENTERED)')" )
+            if(outfileopt.eq.0) then
+              write(22,'(6(1x,i5))') (IECode(j),j=1,ne)
+              write(22,'(6(1x,e14.6))') (emax(j),j=1,ne)
+              write(22,'(6(1x,e14.6))') (emin(j),j=1,ne)
+              write(22,'(6(1x,e14.6))') (Rhv(j),j=1,ne)
+!              write(22,'(6(1x,e14.6))') (umax(j),j=1,nsides)
+!              write(22,'(6(1x,e14.6))') (vmax(j),j=1,nsides)
+              write(22,'(6(1x,e14.6))') (t1(j),j=1,ne)
+              write(22,'(6(1x,e14.6))') (twet(j),j=1,ne)
+            elseif(outfileopt.eq.1) then
+              i = TECDATD142(ne,gamma)
+              i = TECDATD142(ne,emax)
+              i = TECDATD142(ne,emin)
+              i = TECDATD142(ne,Rhv)
+              i = TECDATD142(ne,t1)
+              i = TECDATD142(ne,twet)
             endif
 
-            ! write the data
+! *** and the elements
 
-            rhv = 0.
             do j=1,ne
-              ncn2 = ncn -1 + min0(1,nen(j,ncn))
-              topomin = min(sbot(numsideT(1,j)),sbot(numsideT(2,j)),&
-                            sbot(numsideT(3,j)),sbot(numsideT(ncn2,j)))
-              deptest = emax(j) - topomin
-              if(deptest.gt.depmin) then
-                uu = (umax(numsideT(1,j))+umax(numsideT(2,j))+umax(numsideT(3,j)))/3.
-                vv = (vmax(numsideT(1,j))+vmax(numsideT(2,j))+vmax(numsideT(3,j)))/3.
-                rhv(j)=  sqrt(uu**2 + vv**2)
+              do k=1,ncn
+                nen1(k,1) = nen(j,k)
+              enddo
+              if(NEN1(ncn,1).eq.0) then
+                NEN1(ncn,1) = NEN1(ncn-1,1)
+              endif
+!              write(*,*) j,i
+              if(outfileopt.eq.0) then
+                write(22,*) (NEN1(k,1),k=1,ncn)
+              elseif(outfileopt.eq.1) then
+                i = TECNODE142(ncn,nen1)
               endif
             enddo
-
-            write(22,'(6(1x,i5))') (IECode(j),j=1,ne)
-            write(22,'(6(1x,e14.6))') (emax(j),j=1,ne)
-            write(22,'(6(1x,e14.6))') (emin(j),j=1,ne)
-            write(22,'(6(1x,e14.6))') (rhv(j),j=1,ne)
-!            write(22,'(6(1x,e14.6))') (umax(j),j=1,nsides)
-!            write(22,'(6(1x,e14.6))') (vmax(j),j=1,nsides)
-            write(22,'(6(1x,e14.6))') (t1(j),j=1,ne)
-            write(22,'(6(1x,e14.6))') (twet(j),j=1,ne)
+          
           endif
        
         END SELECT
