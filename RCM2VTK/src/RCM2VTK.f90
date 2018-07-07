@@ -40,7 +40,7 @@
       Program RCM2Tecplot
   
       use RCMArrays
-      use Lib_VTK_IO
+!      use Lib_VTK_IO
   
       implicit none
       
@@ -110,11 +110,12 @@
       open(unit=20,file=fnamedata,status='old',form='unformatted')
       if(fnameprofile.ne.'') open(unit=21,file=fnameprofile,status='old')
 
-      if(outfileopt.eq.0) then
-        OutResFile = trim(fnamedata)//'.vtu'
-      elseif(outfileopt.eq.1) then
-        OutResFile = trim(fnamedata)//'.vtu'
-      endif
+!      if(outfileopt.eq.0) then
+!        OutResFile = trim(fnamedata)//'.vtu'
+!      elseif(outfileopt.eq.1) then
+!        OutResFile = trim(fnamedata)//'.vtu'
+!      endif
+      OutResFile = trim(fnamedata)
 
       read(20) AnalysisTime
       write(*,*) 'AnalysisTime= ',AnalysisTime
@@ -299,9 +300,6 @@
         noptcount = noptcount + 1
 
       enddo
-      
-      i = VTK_GEO_XML()
-      i = VTK_END_XML()
 
 ! *** write maxmin results
       if(istat.eq.0) then
@@ -329,9 +327,6 @@
         nopt = 4
         write(*,*) ' call vtkout, nopt=',nopt
         call OutputData
-       
-        i = VTK_GEO_XML()
-        i = VTK_END_XML()
        
       endif
 
@@ -363,6 +358,7 @@
       real*8 :: bigrI,bigrcI
       character(10) cseq
       character(80) :: vars
+      character(4), save :: fseq='0000'
 
 
       SELECT CASE (nopt)
@@ -381,16 +377,6 @@
 
 ! *** initialize output files
         if (noptcount.eq.0) then   ! first time through
-
-          if(outfileopt.eq.0) then
-            i = VTK_INI_XML( output_format 	= 'ASCII', &
-                             filename	=  trim(OutResFile), &
-                             mesh_topology = 'UnstructuredGrid')
-          elseif(outfileopt.eq.1) then
-            i = VTK_INI_XML( output_format 	= 'BINARY', &
-                             filename	=  trim(OutResFile), &
-                             mesh_topology = 'UnstructuredGrid')
-          endif
 
 ! *** generate connectivity vector
           icount = 0
@@ -433,18 +419,21 @@
             endif
           enddo
 
-        else   ! *** append file
+!        else   ! *** sequential files
+!          return
+        endif
 
-! *** initialize output files
-          if(outfileopt.eq.0) then
-!            i=VTK_INI('ascii',trim(OutResFile),&
-!                      'RiCOM binary to VTK ascii format','UNSTRUCTURED_GRID')
-            return
-          elseif(outfileopt.eq.1) then
-!            i=VTK_INI('raw',trim(OutResFile),&
-!                      'RiCOM binary to VTK binary format','UNSTRUCTURED_GRID')
-            return
-          endif
+        write(fseq,'(I4.4)') noptcount
+        write(*,*) noptcount, fseq
+        
+        if(outfileopt.eq.0) then
+          i = VTK_INI_XML( output_format 	= 'ASCII', &
+                           filename	=  trim(OutResFile)//fseq//'.vtu', &
+                           mesh_topology = 'UnstructuredGrid')
+        elseif(outfileopt.eq.1) then
+          i = VTK_INI_XML( output_format 	= 'BINARY', &
+                           filename	=  trim(OutResFile)//fseq//'.vtu', &
+                           mesh_topology = 'UnstructuredGrid')
         endif
           
         nptot = np + nsides
@@ -552,16 +541,6 @@
 ! *** initialize output files
         if (noptcount.eq.0) then   ! first time through
 
-          if(outfileopt.eq.0) then
-            i = VTK_INI_XML( output_format 	= 'ASCII', &
-                             filename	=  trim(OutResFile), &
-                             mesh_topology = 'UnstructuredGrid')
-          elseif(outfileopt.eq.1) then
-            i = VTK_INI_XML( output_format 	= 'BINARY', &
-                             filename	=  trim(OutResFile), &
-                             mesh_topology = 'UnstructuredGrid')
-          endif
-
 ! *** generate connectivity vector
           icount = 0
           nps = np + nsides
@@ -613,20 +592,21 @@
             endif
           enddo
 
-        else   ! *** append file
-
-! *** initialize output files
-          if(outfileopt.eq.0) then
-!            i=VTK_INI('ascii',trim(OutResFile),&
-!                      'RiCOM binary to VTK ascii format','UNSTRUCTURED_GRID')
-            return
-          elseif(outfileopt.eq.1) then
-!            i=VTK_INI('raw',trim(OutResFile),&
-!                      'RiCOM binary to VTK binary format','UNSTRUCTURED_GRID')
-            return
-          endif
         endif
-          
+
+        write(fseq,'(I4.4)') noptcount
+        write(*,*) noptcount, fseq
+ 
+        if(outfileopt.eq.0) then
+          i = VTK_INI_XML( output_format 	= 'ASCII', &
+                           filename	=  trim(OutResFile)//fseq//'.vtu', &
+                           mesh_topology = 'UnstructuredGrid')
+        elseif(outfileopt.eq.1) then
+          i = VTK_INI_XML( output_format 	= 'BINARY', &
+                           filename	=  trim(OutResFile)//fseq//'.vtu', &
+                           mesh_topology = 'UnstructuredGrid')
+        endif
+         
 
         nptot = (np+nsides)*(npvC+1)
         netot = ne*npvc
@@ -782,18 +762,6 @@
 
           if (noptcount.eq.0) then
 
-          ! first time through start new file
-
-! *** initialize output files
-            if(outfileopt.eq.0) then
-              i = VTK_INI_XML( output_format 	= 'ASCII', &
-                               filename	=  trim(OutMaxFile), &
-                               mesh_topology = 'UnstructuredGrid')
-            elseif(outfileopt.eq.1) then
-              i = VTK_INI_XML( output_format 	= 'BINARY', &
-                               filename	=  trim(OutMaxFile), &
-                               mesh_topology = 'UnstructuredGrid')
-            endif
 ! *** generate connectivity vector
             icount = 0
             do j=1,ne
@@ -834,6 +802,16 @@
                 endif
               endif
             enddo
+          endif
+
+          if(outfileopt.eq.0) then
+            i = VTK_INI_XML( output_format 	= 'ASCII', &
+                             filename	=  trim(OutMaxFile), &
+                             mesh_topology = 'UnstructuredGrid')
+          elseif(outfileopt.eq.1) then
+            i = VTK_INI_XML( output_format 	= 'BINARY', &
+                             filename	=  trim(OutMaxFile), &
+                             mesh_topology = 'UnstructuredGrid')
           endif
 
           !set original coordinates if icoord>0
@@ -877,6 +855,9 @@
           i = VTK_DAT_XML('cell','CLOSE')
 
       END SELECT
+      
+      i = VTK_GEO_XML()
+      i = VTK_END_XML()
 
         close(22)
 
