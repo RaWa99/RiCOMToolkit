@@ -290,7 +290,11 @@
       
 ! *** write tecplot file
         if(noptcount.eq.0) write(*,*) ' call tecout, nopt=',nopt
-        call OutputTecplot
+        if(outfileopt.eq.0) then
+          call OutputData
+        elseif(outfileopt.eq.1) then
+          call OutputDataPlt
+        endif
 
         noptcount = noptcount + 1
 
@@ -326,7 +330,11 @@
         noptcount = 0
         nopt = 4
         write(*,*) ' call tecout, nopt=',nopt
-        call OutputTecplot
+        if(outfileopt.eq.0) then
+          call OutputData
+        elseif(outfileopt.eq.1) then
+          call OutputDataPlt
+        endif
        
         if(outfileopt.eq.1) then
           i = tecend142()
@@ -342,7 +350,7 @@
 
 !***************************************************************
 
-      subroutine OutputTecplot () !(noptcount, noptwrite)
+      subroutine OutputData () !(noptcount, noptwrite)
 
       USE RCMArrays
 
@@ -362,17 +370,6 @@
 !      real, allocatable, save :: etamax(:),spdmax(:),t1(:),twet(:),twet2(:),twet3(:),etalast(:)
       character(10) cseq
       character(80) :: vars
-
-!      integer, parameter :: ndf0=0
-!      integer :: noptcount, noptwrite, istat, n23, npv0,MBout
-!      integer :: j,js,k,kv,nn,ncn2,nentmp,mr,npvm,nps
-!      integer :: js2,jn
-!      integer, save :: nopttype, firstcount = 0
-!      real*8 :: cdep, zz(100), etaside,speed,topomin,deptest,zero,zncn
-!      real*8 :: uu,vv
-!      real*8 :: bigrI,bigrcI,x00,y00
-!      real*8, allocatable, save :: emax(:),emin(:),spdmax(:),umax(:),vmax(:),t1(:),twet(:)
-!      character(10) cseq
 
 ! *** Tecplot output- a single Tecplot file with many frames
 
@@ -1530,6 +1527,739 @@
           endif
        
         END SELECT
+
+        close(22)
+
+        if(npv.gt.1) then
+          ! first time through start new file
+          do j=1,jUprofile
+
+            js = numsideT(2,tsUnodes(j))
+            if(js.eq.0) cycle
+
+     
+            npv0 = npvc+1
+            call Getzgrid(js,npv0,zz)
+
+            if(izcoord.gt.1) then
+              do k=1,npv0-1
+                zz(k) = 0.5D0*(zz(k)+zz(k+1))
+              enddo
+              npv0 = npv0-1
+            endif
+
+            if (noptcount.eq.0) then
+              n23 = 23  !+j-1
+              write(cseq,"(I2.2)") j
+              open(unit=n23,file='profile'//trim(cseq)//'.dat',status='unknown')
+              if(nson.eq.0) then
+                write(n23,*) 'VARIABLES="z" "u" "v" "w"'
+              else
+                write(n23,*) 'VARIABLES="z" "u" "v" "w" "q"'
+              endif
+              write(n23,*) 'ZONE'
+              write(n23,*) ' SOLUTIONTIME=',TET
+
+!             ! write the data
+              if(nson.eq.0) then
+                do k=1,npv0
+                  write(n23,'(4(1PE12.4))') zz(k),( un(k,js)*sdy(js)+ut(k,js)*sdx(js)), &
+                                 (-un(k,js)*sdx(js)+ut(k,js)*sdy(js)),wz(k,iside(1,js))
+                enddo
+              else
+                do k=1,npv0
+                  write(n23,'(4(1PE12.4))') zz(k),( un(k,js)*sdy(js)+ut(k,js)*sdx(js)), &
+                       (-un(k,js)*sdx(js)+ut(k,js)*sdy(js)),wz(k,iside(1,js)),qp(k,iside(1,js))
+                enddo
+              endif
+              close(n23)
+            else 
+          ! append file
+              n23 = 23  !+j-1
+              write(cseq,"(I2.2)") j
+              open(unit=n23,file='profile'//trim(cseq)//'.dat',status='old',position='append')
+              write(n23,*) 'ZONE'
+              write(n23,*) ' SOLUTIONTIME=',TET
+
+!             ! write the data
+              if(nson.eq.0) then
+                do k=1,npv0
+                  write(n23,'(4(1PE12.4))') zz(k),( un(k,js)*sdy(js)+ut(k,js)*sdx(js)), &
+                                 (-un(k,js)*sdx(js)+ut(k,js)*sdy(js)),wz(k,iside(1,js))
+                enddo
+              else
+                do k=1,npv0
+                  write(n23,'(4(1PE12.4))') zz(k),( un(k,js)*sdy(js)+ut(k,js)*sdx(js)), &
+                       (-un(k,js)*sdx(js)+ut(k,js)*sdy(js)),wz(k,iside(1,js)),qp(k,iside(1,js))
+                enddo
+              endif
+              close(n23)
+            endif
+          enddo
+        endif
+
+        if((nsed.gt.0).and.(npvc.gt.1)) then
+        
+          js = jCProfile
+          call GetzgridE(js,npv0,cdep,zz)
+
+          if (noptcount.eq.0) then
+          ! first time through start new file
+            open(unit=23,file='profileSed.dat',status='unknown')
+            write(23,*) 'VARIABLES="z" "C" '
+            write(23,*) 'ZONE'
+            write(23,*) ' SOLUTIONTIME=',TET
+
+            do k=1,npvc
+!           ! write the data
+              write(23,*) zz(k), cc(k,js)
+            enddo
+            write(23,*) zz(npvc), cc(npvc+1,js)
+            if(nsbc.ge.3) then
+              write(23,*) zz(npvc), cc(npvc+2,js)
+            endif
+          else 
+          ! append file
+            open(unit=23,file='profileSed.dat',status='old',position='append')
+            write(23,*) 'ZONE'
+            write(23,*) ' SOLUTIONTIME=',TET
+
+            do k=1,npvc
+!           ! write the data
+              write(23,*) zz(k), cc(k,js)
+            enddo
+            write(23,*) zz(npvc), cc(npvc+1,js)
+            if(nsbc.ge.3) then
+              write(23,*) zz(npvc), cc(npvc+2,js)
+            endif
+          endif
+          close(23)
+        endif
+
+        if((nsol.ne.0).and.(npvc.gt.1)) then
+          
+          do j=1,jSprofile
+
+            js = tsSnodes(j)
+            call GetzgridE(js,npv0,cdep,zz)
+          
+            if (noptcount.eq.0) then
+          ! first time through start new file
+!            do j=1,jSprofile
+              n23 = 23  !+j-1
+              write(cseq,"(I2.2)") j
+              open(unit=n23,file='profileCon'//trim(cseq)//'.dat',status='unknown')
+              if(iOPsol.eq.0) then
+                write(23,*)'VARIABLES= "Z"  "Sigt" '
+              elseif(iOPsol.eq.1) then
+                write(23,*)'VARIABLES= "Z"  "Sigt" "PSU" '
+              elseif(iOPsol.eq.2) then
+                write(23,*)'VARIABLES= "Z"  "Sigt" "T" '
+              elseif(iOPsol.eq.3) then
+                write(23,*)'VARIABLES= "Z"  "Sigt" "PSU" "T" '
+              endif
+!              write(23,*) 'VARIABLES="z" "C" '
+              write(23,*) 'ZONE'
+              write(23,*) ' SOLUTIONTIME=',TET
+
+!              js = tsSnodes(j)
+!              cdep=min(xyz(nen(js,1),3),xyz(nen(js,2),3),xyz(nen(js,3),3),xyz(nen(js,ncn),3))
+!              ncn2 = ncn -1 + min0(1,nen(js,ncn))
+!              cdep = 0. 
+!              do jn=1,ncn2
+!                cdep = cdep + xyz(nen(js,jn),3)
+!              enddo
+!              cdep = eta(js)-cdep/dble(ncn2)
+!              write(23,*) 'iOP,npvc=',iOPsol,npvc,js,cdep
+!             ! write the data
+              if(iOPsol.eq.0) then
+                do k=1,npv0
+                  write(23,'(6(1x,e14.6))') zz(k), sigt(k,js)
+                enddo
+                close(n23)
+              elseif(iOPsol.eq.1) then
+                do k=1,npv0
+                  write(23,'(6(1x,e14.6))') zz(k), sigt(k,js), PSU(k,js)
+                enddo
+                close(n23)
+              elseif(iOPsol.eq.2) then
+                do k=1,npv0
+                  write(23,'(6(1x,e14.6))') zz(k), sigt(k,js), TC(k,js)
+                enddo
+                close(n23)
+              elseif(iOPsol.eq.3) then
+                do k=1,npv0
+                  write(23,'(6(1x,e14.6))') zz(k), sigt(k,js), PSU(k,js), TC(k,js)
+                enddo
+                close(n23)
+              endif
+            else 
+          ! append file
+!            do j=1,jSprofile
+              n23 = 23 !+j-1
+              write(cseq,"(I2.2)") j
+              open(unit=n23,file='profileCon'//trim(cseq)//'.dat',status='old',position='append')
+              write(23,*) 'ZONE'
+              write(23,*) ' SOLUTIONTIME=',TET
+
+!              js = tsSnodes(j)
+!              ncn2 = ncn -1 + min0(1,nen(js,ncn))
+!              cdep = 0. 
+!              do jn=1,ncn2
+!                cdep = cdep + xyz(nen(js,jn),3)
+!              enddo
+!              cdep = eta(js)-cdep/dble(ncn2)
+!             ! write the data
+              if(iOPsol.eq.0) then
+                do k=1,npv0
+                  write(23,'(6(1x,e14.6))') zz(k), sigt(k,js)
+                enddo
+                close(n23)
+              elseif(iOPsol.eq.1) then
+                do k=1,npv0
+                  write(23,'(6(1x,e14.6))') zz(k), sigt(k,js), PSU(k,js)
+                enddo
+                close(n23)
+              elseif(iOPsol.eq.2) then
+                do k=1,npv0
+                  write(23,'(6(1x,e14.6))') zz(k), sigt(k,js), TC(k,js)
+                enddo
+                close(n23)
+              elseif(iOPsol.eq.3) then
+                do k=1,npv0
+                  write(23,'(6(1x,e14.6))') zz(k), sigt(k,js), PSU(k,js), TC(k,js)
+                enddo
+                close(n23)
+              endif
+            endif
+          enddo
+        endif
+
+      RETURN
+      END
+
+!***************************************************************
+
+      subroutine OutputDataPlt () !(noptcount, noptwrite)
+
+      USE RCMArrays
+
+      implicit none
+      
+      include 'tecio.f90'
+      
+      integer, parameter :: ndf0=0
+      integer :: n23, npv0, MBout
+      integer, save :: npvb=-1
+      integer :: i,j,js,k,kv,nn,ncn2,nentmp,mr,npvm,nps,nen1(4,1),nen3(8,1)
+      integer, save :: ffmt=0, ftype=0, idbg=1, isdbl=1, i0=0, i1=1,i8=8
+      integer :: ZoneType, PVLst(10), VarLoc(10), ShVar(10),ShCon,nptot,netot
+      real*8 :: cdep, zz(100),topomin,deptest,zero,zncn
+      real*8 :: uu,vv
+      real*8 :: bigrI,bigrcI
+!      real, allocatable, save :: etamax(:),spdmax(:),t1(:),twet(:),twet2(:),twet3(:),etalast(:)
+      character(10) cseq
+      character(80) :: vars
+
+!      integer, parameter :: ndf0=0
+!      integer :: noptcount, noptwrite, istat, n23, npv0,MBout
+!      integer :: j,js,k,kv,nn,ncn2,nentmp,mr,npvm,nps
+!      integer :: js2,jn
+!      integer, save :: nopttype, firstcount = 0
+!      real*8 :: cdep, zz(100), etaside,speed,topomin,deptest,zero,zncn
+!      real*8 :: uu,vv
+!      real*8 :: bigrI,bigrcI,x00,y00
+!      real*8, allocatable, save :: emax(:),emin(:),spdmax(:),umax(:),vmax(:),t1(:),twet(:)
+!      character(10) cseq
+
+! *** Tecplot output- a single Tecplot file with many frames
+
+      SELECT CASE (nopt)
+
+        CASE(2)  !eta,C on elements (2d), u,v on edges(3d). Model variable locations.
+
+! *** generate ut for output.
+          if(npvb.lt.0) npvb = max(npv,min(2,2*max(0,izcoord-9)))
+          Rn0(:,1:nsides) = un(:,1:nsides)
+          call  GlobalQInterp ()
+          if(allocated(etaMB)) then
+            MBout = 1
+          else
+            MBout = 0
+          endif
+
+          if (noptcount.eq.0) then   ! first time through start new file
+
+! *** define variables
+            if(nson.gt.0) then
+              vars = 'X Y Z ETA U V W Q'
+            elseif(nsed.gt.0) then
+              vars = 'X Y Z ETA U V S'
+            elseif(nsol.ne.0) then
+              if(iOPsol.eq.0) then
+                vars = 'X Y Z ETA U V Sigt'
+              elseif(iOPsol.eq.1) then
+                vars = 'X Y Z ETA U V Sigt PSU'
+              elseif(iOPsol.eq.2) then
+                vars = 'X Y Z ETA U V Sigt T'
+              elseif(iOPsol.eq.3) then
+                vars = 'X Y Z ETA U V Sigt PSU T'
+              endif
+            elseif(MBout.gt.0) then
+              vars = 'X Y Z ETA U V EMB UMB VMB'
+            elseif(neqtide.gt.0) then
+              vars = 'X Y Z ETA U V EQT'
+            else
+                vars = 'X Y Z ETA U V'
+            endif
+            
+! *** initialize output files
+
+            i = tecini142('Convert RiCOM bin to Tec360 plt'//char(0),&
+                            trim(vars)//char(0),&
+                            trim(OutResFile)//char(0),&
+                            './'//char(0),&
+                            ffmt,ftype,idbg,isdbl)
+
+            if(ncn.eq.3) then
+              ZoneType = 2
+            elseif(ncn.eq.4) then
+              ZoneType = 3
+            endif
+            VarLoc = 1
+            VarLoc(4) = 0
+            VarLoc(7:10) = 0
+            PVLst = 0
+            ShVar = 0
+            ShCon = 0
+            nptot = np + nsides
+            netot = ne
+            
+            i = TECZNE142('zone'//char(0),ZoneType,nptot,netot,i0,i0,i0,i0,&
+                          tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
+
+! *** write the data
+            xpt(1:np) = xp(1:np)
+            ypt(1:np) = yp(1:np)
+            zpt(1:np) = zp(1:np)
+            do j=1,nsides
+              xpt(np+j) = sxy(1,j)
+              ypt(np+j) = sxy(2,j)
+              zpt(np+j) = sbot(j)
+            enddo
+            i = TECDATD142(nptot,xpt)
+            i = TECDATD142(nptot,ypt)
+            i = TECDATD142(nptot,zpt)
+
+          else
+! *** append file
+
+            if(ncn.eq.3) then
+              ZoneType = 2
+            elseif(ncn.eq.4) then
+              ZoneType = 3
+            endif
+
+            VarLoc = 1
+            VarLoc(4) = 0
+            VarLoc(7:10) = 0
+            ShVar = 0
+            ShVar(1) = 1
+            ShVar(2) = 1
+            if(neMB.eq.0) then
+              ShVar(3) = 1
+            endif
+            PVLst = 0
+            ShCon = 1
+            
+            nptot = np + nsides
+            netot = ne
+            
+            i = TECZNE142(''//char(0),ZoneType,nptot,netot,i0,i0,i0,i0,&
+                          tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
+
+! *** write the data
+            if(neMB.gt.0) then
+              zpt(1:np) = zp(1:np)
+              do j=1,nsides
+                zpt(np+j) = sbot(j)
+              enddo
+              i = TECDATD142(nptot,zpt)
+            endif
+              
+          endif    !break
+              
+          i = TECDATD142(ne,eta)
+          
+          do j=1,np
+            uct(j) = uc(1,j)
+            vct(j) = vc(1,j)
+          enddo
+          do j=1,nsides
+            uct(np+j) =  un(1,j)*sdy(j)+ut(1,j)*sdx(j)
+            vct(np+j) = -un(1,j)*sdx(j)+ut(1,j)*sdy(j)
+          enddo
+          i = TECDATD142(nptot,uct)
+          i = TECDATD142(nptot,vct)
+          
+          if(nson.gt.0) then
+            i = TECDATD142(ne,wz)
+            i = TECDATD142(ne,qp)
+          elseif(nsed.gt.0) then
+            i = TECDATD142(ne,cc)
+          elseif(nsol.ne.0) then
+            if(iOPsol.eq.0) then
+              i = TECDATD142(ne,sigt)
+            elseif(iOPsol.eq.1) then
+              i = TECDATD142(ne,sigt)
+              i = TECDATD142(ne,PSU)
+            elseif(iOPsol.eq.2) then
+              i = TECDATD142(ne,sigt)
+              i = TECDATD142(ne,TC)
+            elseif(iOPsol.eq.3) then
+              i = TECDATD142(ne,sigt)
+              i = TECDATD142(ne,PSU)
+              i = TECDATD142(ne,TC)
+            endif
+          elseif(MBout.gt.0) then
+            i = TECDATD142(ne,etaMB)
+            do j=1,np
+              uct(j) = uc(2,j)
+              vct(j) = vc(2,j)
+            enddo
+            do j=1,nsides
+              uct(np+j) = un(2,j)*sdy(j)+ut(2,j)*sdx(j)
+              vct(np+j) = -un(2,j)*sdx(j)+ut(2,j)*sdy(j)
+            enddo
+            i = TECDATD142(nptot,uct)
+            i = TECDATD142(nptot,vct)
+          elseif(neqtide.gt.0) then
+            i = TECDATD142(ne,eqtide)
+          endif
+!        endif
+
+          If(noptcount.eq.0) then ! write the elements
+
+            do j=1,ne
+              do k=1,ncn
+                nen1(k,1) = nen(j,k)
+              enddo
+              if(NEN1(ncn,1).eq.0) then
+                NEN1(ncn,1) = NEN1(ncn-1,1)
+              endif
+!              write(*,*) j,i
+              i = TECNODE142(ncn,nen1)
+            enddo
+          endif  
+              
+        
+        CASE(3)  !eta, u, v interpolated to centroid. 2D.
+
+! *** generate ut for output.
+
+          if(npvb.lt.0) npvb = max(npv,min(2,2*max(0,izcoord-9)))
+          Rn0(:,1:nsides) = un(:,1:nsides)
+          call  GlobalQInterp ()
+
+          if (noptcount.eq.0) then
+! *** first time through start new file
+            if(npv.gt.1) then
+              if(nson.gt.0) then
+                vars = 'X Y Z U V W Q'
+              elseif(nsed.gt.0) then
+                vars = 'X Y Z U V W S'
+              elseif(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  vars = 'X Y Z U V W Sigt'
+                elseif(iOPsol.eq.1) then
+                  vars = 'X Y Z U V W Sigt PSU'
+                elseif(iOPsol.eq.2) then
+                  vars = 'X Y Z U V W Sigt T'
+                elseif(iOPsol.eq.3) then
+                  vars = 'X Y Z U V W Sigt PSU T'
+                endif
+              else
+                vars = 'X Y Z U V W'
+              endif
+            else
+              if(nson.gt.0) then
+                vars = 'X Y Z U V Q'
+              elseif(nsed.gt.0) then
+                vars = 'X Y Z U V S'
+              elseif(nsol.ne.0) then
+                if(iOPsol.eq.0) then
+                  vars = 'X Y Z U V Sigt'
+                elseif(iOPsol.eq.1) then
+                  vars = 'X Y Z U V Sigt PSU'
+                elseif(iOPsol.eq.2) then
+                  vars = 'X Y Z U V Sigt T'
+                elseif(iOPsol.eq.3) then
+                  vars = 'X Y Z U V Sigt PSU T'
+                endif
+              else
+                vars = 'X Y Z U V'
+              endif
+            endif
+           
+      
+            i = tecini142('Convert RiCOM bin to Tec360 plt'//char(0),&
+                            trim(vars)//char(0),&
+                            trim(OutResFile)//char(0),&
+                            './'//char(0),&
+                            ffmt,ftype,idbg,isdbl)
+
+            VarLoc = 1
+            VarLoc(6:10) = 0
+            ZoneType = 5
+            PVLst = 0
+            ShVar = 0
+            ShCon = 0
+            nptot = (np+nsides)*(npvC+1)
+            netot = ne*npvc
+              
+            i = TECZNE142('ZONE'//char(0),ZoneType,nptot,netot,i0,i0,i0,i0,&
+                          tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
+               
+! *** write x,y
+
+            nps = np + nsides
+            do k=1,npvc+1
+              do j=1,np
+                  xpt((k-1)*nps+j) = xp(j)
+                  ypt((k-1)*nps+j) = yp(j)
+              enddo
+              do j=1,nsides
+                  xpt(np+(k-1)*nps+j) = sxy(1,j)
+                  ypt(np+(k-1)*nps+j) = sxy(2,j)
+              enddo
+            enddo
+            i = TECDATD142(nptot,xpt)
+            i = TECDATD142(nptot,ypt)
+
+          else   ! *** append to file
+
+            VarLoc = 1
+            VarLoc(6:10) = 0
+            ZoneType = 5
+            PVLst = 0
+            ShVar = 0
+            ShVar(1) = 1
+            ShVar(2) = 1
+            ShCon = 1
+            nptot = (np+nsides)*(npvC+1)
+            netot = ne*npvc
+              
+            i = TECZNE142('ZONE'//char(0),ZoneType,nptot,netot,i0,i0,i0,i0,&
+                            tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
+
+          endif
+                            
+          rhv = 0.
+          gamma = 0.
+          do nn=1,ne
+            ncn2 = ncn -1 + min0(1,nen(nn,ncn))
+            DO J=1,ncn2
+              MR = NEN(NN,J)
+              gamma(mr) = gamma(mr) + area(nn)
+              rhv(mr) = rhv(mr) + eta(nn)*area(nn)
+            enddo
+          enddo
+          do j=1,np
+!            if(nbc(j).lt.0) then
+!              rhv(j) = spec(-nbc(j))
+            if(gamma(j).gt.0) then
+              rhv(j) = rhv(j)/gamma(j)
+            else
+              rhv(j) = zp(j)
+            endif
+          enddo
+                       
+! *** write z
+
+          nps = np + nsides
+          if(izcoord.eq.0.or.izcoord.eq.2) then
+            do k=1,npvc+1
+              do j=1,np
+                zpt((k-1)*nps+j) = -zp(j)*zdep(k)
+              enddo
+              do j=1,nsides
+                zpt(np+(k-1)*nps+j) = -sbot(j)*zdep(k)
+              enddo
+            enddo
+            i = TECDATD142(nptot,zpt)
+            
+          elseif(izcoord.eq.1.or.izcoord.eq.3) then
+            do k=1,izgrid-1
+              do j=1,np
+                zpt((k-1)*nps+j) = -max(zp(j),zdep(izgrid))*zdep(k)
+              enddo
+              do j=1,nsides
+                zpt(np+(k-1)*nps+j) = -max(sbot(j),zdep(izgrid))*zdep(k)
+              enddo
+            enddo
+            do k=izgrid,npvc+1
+              do j=1,np
+                zpt((k-1)*nps+j) = max(zp(j),zdep(k))
+              enddo
+              do j=1,nsides
+                zpt(np+(k-1)*nps+j) = max(sbot(j),zdep(k))
+              enddo
+            enddo
+            i = TECDATD142(nptot,zpt)
+          endif
+                
+! *** write u,v
+
+          uct = 0.D0
+          vct = 0.D0
+          do k=1,npv
+            do j=1,np
+              uct((k-1)*nps+j) = uc(k,j)
+              vct((k-1)*nps+j) = vc(k,j)
+            enddo
+            do j=1,nsides
+              uct(np+(k-1)*nps+j) =  un(k,j)*sdy(j)+ut(k,j)*sdx(j)
+              vct(np+(k-1)*nps+j) = -un(k,j)*sdx(j)+ut(k,j)*sdy(j)
+            enddo
+          enddo
+          i = TECDATD142(nptot,uct)
+          i = TECDATD142(nptot,vct)
+
+! *** write w
+          if(npv.gt.1) then
+           i = TECDATD142(netot,wz)
+          endif
+
+! *** write scalar variables
+          npvm = max(1,npvC)
+          if(nson.gt.0) then
+            i = TECDATD142(netot,qp)
+          elseif(nsed.gt.0) then
+            i = TECDATD142(netot,cc)
+          elseif(nsol.ne.0) then
+            if(iOPsol.eq.0) then
+              i = TECDATD142(netot,sigt)
+            elseif(iOPsol.eq.1) then
+              i = TECDATD142(netot,sigt)
+              i = TECDATD142(netot,PSU)
+            elseif(iOPsol.eq.2) then
+              i = TECDATD142(netot,sigt)
+              i = TECDATD142(netot,TC)
+            elseif(iOPsol.eq.3) then
+              i = TECDATD142(netot,sigt)
+              i = TECDATD142(netot,PSU)
+              i = TECDATD142(netot,TC)
+            endif
+          endif
+
+          if(noptcount.eq.0) then ! write the elements
+              nps = np + nsides
+              do j=1,ne
+                do k=1,ncn
+                  nen1(k,1) = nen(j,k)
+                enddo
+                if(NEN1(ncn,1).eq.0) then
+                  NEN1(ncn,1) = NEN1(ncn-1,1)
+                endif
+                NENtmp = NEN1(ncn,1)
+                do kv=1,npvC
+                  do k=1,4
+                    nen3(k,1) = NEN1(k,1)+kv*nps
+                    nen3(k+4,1) = NEN1(k,1)+(kv-1)*nps
+                  enddo
+                  i = TECNODE142(i8,nen3)
+                enddo
+            enddo
+          endif
+        
+        CASE(4)  !case 4 is max values
+
+! *** then write it out
+
+          if (noptcount.eq.0) then
+            
+            vars = 'X Y Z ECode EMAX EMIN SMAX T1 TWET'
+            
+            i = tecini142('Convert RiCOM bin to Tec360 plt'//char(0),&
+                          trim(vars)//char(0),&
+                          trim(OutMaxFile)//char(0),&
+                          './'//char(0),&
+                          ffmt,ftype,idbg,isdbl)
+            
+            if(ncn.eq.3) then
+              ZoneType = 2
+            elseif(ncn.eq.4) then
+              ZoneType = 3
+            endif
+
+            VarLoc=1
+            VarLoc(4:9)=0
+            PVLst = 0
+            ShVar = 0
+            ShCon = 0
+            
+            i = TECZNE142('zone'//char(0),ZoneType,np,ne,i0,i0,i0,i0,&
+                          tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
+
+            !set original coordinates if icoord>0
+            if(ixycoord.eq.0) then
+!              x00 = -long0 ! 0. !offsets: from input file?
+!              y00 = -lat0  ! 0.
+              bigrI = rad2deg/bigr
+              bigrcI = bigrI/cos(deg2rad*y0off) 
+              do j=1,np
+                rhv(j) = xp(j)*bigrcI 
+                gamma(j) = yp(j)*bigrI
+              enddo
+                i = TECDATD142(np,rhv)
+                i = TECDATD142(np,gamma)
+                i = TECDATD142(np,zp)
+            else
+                i = TECDATD142(np,xp)
+                i = TECDATD142(np,yp)
+                i = TECDATD142(np,zp)
+            endif
+
+            Rn0 = 0.
+            do j=1,ne
+              ncn2 = ncn -1 + min0(1,nen(j,ncn))
+              zncn = dble(ncn2)
+              topomin = min(sbot(numsideT(1,j)),sbot(numsideT(2,j)),&
+                            sbot(numsideT(3,j)),sbot(numsideT(ncn2,j)))
+              deptest = emax(j) - topomin
+              if(deptest.gt.depmin) then
+                uu = (umax(numsideT(1,j))+umax(numsideT(2,j))+umax(numsideT(3,j)))/3.
+                vv = (vmax(numsideT(1,j))+vmax(numsideT(2,j))+vmax(numsideT(3,j)))/3.
+                Rhv(j)= sqrt(uu**2 + vv**2)
+              endif
+            enddo
+            
+            gamma(1:ne) = dble(IECode(1:ne))
+
+            i = TECDATD142(ne,gamma)
+            i = TECDATD142(ne,emax)
+            i = TECDATD142(ne,emin)
+            i = TECDATD142(ne,Rhv)
+            i = TECDATD142(ne,t1)
+            i = TECDATD142(ne,twet)
+
+! *** and the elements
+
+            do j=1,ne
+              do k=1,ncn
+                nen1(k,1) = nen(j,k)
+              enddo
+              if(NEN1(ncn,1).eq.0) then
+                NEN1(ncn,1) = NEN1(ncn-1,1)
+              endif
+!              write(*,*) j,i
+              i = TECNODE142(ncn,nen1)
+
+            enddo
+          
+          endif
+       
+      END SELECT
 
         close(22)
 
