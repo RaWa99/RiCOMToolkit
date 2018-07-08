@@ -37,7 +37,7 @@
 
 !***************************************************************
 
-      Program RCM2Tecplot
+      Program RCM2VTK
   
       use RCMArrays
 !      use Lib_VTK_IO
@@ -58,12 +58,12 @@
 
       if(numarg.eq.0) then
         do while (notOK.eqv..true.)
-          write(*,*) ' Enter output option: TECASC (ascii) or TECPLT (plt).'
+          write(*,*) ' Enter output option: VTKASC (ascii) or VTKPLT (plt).'
           read(*,'(a)') outopt
-          if(outopt(1:6).eq.'TECASC') then
+          if(outopt(1:6).eq.'VTKASC') then
             outfileopt = 0
             notOK = .false.
-          elseif(outopt(1:6).eq.'TECPLT') then
+          elseif(outopt(1:6).eq.'VTKPLT') then
             outfileopt = 1
             notOK = .false.
           else
@@ -321,7 +321,7 @@
         if(outfileopt.eq.0) then
           OutMaxFile = trim(fnamedata)//'.max.vtu'
         elseif(outfileopt.eq.1) then
-          OutMaxFile = trim(fnamedata)//'.max.vtu'
+          OutMaxFile = trim(fnamedata)//'.max.b.vtu'
         endif
         noptcount = 0
         nopt = 4
@@ -432,7 +432,7 @@
                            mesh_topology = 'UnstructuredGrid')
         elseif(outfileopt.eq.1) then
           i = VTK_INI_XML( output_format 	= 'BINARY', &
-                           filename	=  trim(OutResFile)//fseq//'.vtu', &
+                           filename	=  trim(OutResFile)//fseq//'.b.vtu', &
                            mesh_topology = 'UnstructuredGrid')
         endif
           
@@ -603,7 +603,7 @@
                            mesh_topology = 'UnstructuredGrid')
         elseif(outfileopt.eq.1) then
           i = VTK_INI_XML( output_format 	= 'BINARY', &
-                           filename	=  trim(OutResFile)//fseq//'.vtu', &
+                           filename	=  trim(OutResFile)//fseq//'.b.vtu', &
                            mesh_topology = 'UnstructuredGrid')
         endif
          
