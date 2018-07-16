@@ -342,6 +342,7 @@
 
       USE RCMArrays
       use Lib_VTK_IO
+      USE IR_Precision 
 
       implicit none
       
@@ -353,7 +354,7 @@
       integer :: i,j,js,k,kv,nn,ncn2,nentmp,mr,npvm,nps,nen1(4,1),nen3(8,1)
       integer, save :: ffmt=0, ftype=0, idbg=1, isdbl=1, i0=0, i1=1,i8=8
       integer :: ZoneType, PVLst(10), VarLoc(10), ShVar(10),ShCon,nptot,netot
-      real*8 :: cdep, zz(100),topomin,deptest,zero,zncn
+      real*8 :: cdep, zz(100),topomin,deptest,zncn
       real*8 :: uu,vv
       real*8 :: bigrI,bigrcI
       character(10) cseq
@@ -426,6 +427,7 @@
         write(fseq,'(I4.4)') noptcount
         write(*,*) noptcount, fseq
         
+        call IR_Init        
         if(outfileopt.eq.0) then
           i = VTK_INI_XML( output_format 	= 'ASCII', &
                            filename	=  trim(OutResFile)//fseq//'.vtu', &

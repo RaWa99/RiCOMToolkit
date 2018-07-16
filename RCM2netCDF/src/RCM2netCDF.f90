@@ -1,9 +1,277 @@
+!***************************************************************
+
+  Module RCMArrays
+  
+      implicit none
+
+      integer :: ne,np,nsides,npv,npvC,ncn   !nph,nphu,npv  
+      integer :: nson,nsed,nsol
+      integer :: neqtide=0, neMB=0, nsbc, iOPsol=0
+      integer :: noptcount=0, nopt=2, outfileopt=0
+      integer :: izcoord=2,izgrid=0,ixycoord
+      integer :: jUprofile=0,jCprofile=0, jSprofile=0
+      integer, allocatable :: nen(:,:),numsideT(:,:),iside(:,:),IECode(:)
+      integer, allocatable :: iends(:,:)
+      integer, allocatable :: tsUnodes(:),tsSnodes(:),tsCnodes(:)
+      real*8 ::  TET,tet0
+      real*8 :: x0off,y0off
+      real*8, parameter :: depmin=0.00001
+      real*8, parameter :: bigr = 6378136.D0
+      real*8, parameter :: pi = 3.141592653589793D0
+      real*8, parameter :: rad2deg=180.D0/pi
+      real*8, parameter :: deg2rad=pi/180.D0
+      real*8, allocatable ::  xp(:),yp(:),zp(:),zdep(:),area(:)
+      real*8, allocatable ::  xpt(:),ypt(:),zpt(:),uct(:),vct(:)
+      real*8, allocatable ::  eta(:),un(:,:),ut(:,:),wz(:,:),etaMB(:)
+      real*8, allocatable ::  uc(:,:),vc(:,:),eqtide(:)
+      real*8, allocatable ::  sxy(:,:),sbot(:),sdx(:),sdy(:),sdep(:)
+      real*8, allocatable ::  rhv(:),gamma(:),Rn0(:,:) !scratch vectors
+      real*8, allocatable ::  qp(:,:),cc(:,:),sigt(:,:),PSU(:,:),TC(:,:)
+      real*8, allocatable ::  emax(:),emin(:),spdmax(:),umax(:),vmax(:),t1(:),twet(:)
+      character(256) :: OutResFile, OutMaxFile
+      character(20) :: outopt
+ 
+  end module RCMArrays
+
 !*********************************************************************
 
       Program RCM2netCDF
-      !under construction
+  
+      use RCMArrays
+  
+      implicit none
+
+      integer :: i,j,k,istat,npvgrd,npdim
+      integer :: numarg, iargc
+      character*256 :: fnamedata='', fnameprofile='', fnamemax=''
+      character(18) :: AnalysisTime
+      character(len=256) :: arg
+      logical :: notOK=.true.
+       
+!     read time slices from the binary data file
+      numarg=iargc()
+
+      if(numarg.eq.0) then
+        write(*,*) ' Enter filename for input RiCOM binary file'
+        read(*,'(a)') fnamedata
+        write(*,*) ' Enter filename for profile points input. CR=none.'
+        read(*,'(a)') fnameprofile
+      endif
       
+      if(numarg.ge.1) then
+        i = 1
+        call getarg(i,arg)
+        fnamedata = arg
+      endif
       
+      if(numarg.ge.2) then
+        i = 2
+        call getarg(i,arg)
+        fnameprofile = arg
+      endif
+
+      open(unit=20,file=fnamedata,status='old',form='unformatted')
+      if(fnameprofile.ne.'') open(unit=21,file=fnameprofile,status='old')
+
+      OutResFile = trim(fnamedata)//'.nc'
+
+      read(20) AnalysisTime
+      write(*,*) 'AnalysisTime= ',AnalysisTime
+      read(20)  !skip windfilename
+
+      read(20) ne,np,nsides,npv,ncn,izcoord,izgrid,ixycoord,x0off,y0off
+      read(20) nson,nsed,nsol,neMB,neqtide,iOPsol
+
+      npv = max(npv,1)
+      if(npv.gt.1) then 
+        nopt= 3
+        if(izcoord.lt.2) then
+          npvC = npv-1
+        else
+          npvC = npv
+        endif
+      else
+        nopt= 2
+        npvC = 1
+      endif
+
+      write(*,*) 'ne,np,nsides,npv=',ne,np,nsides,npv
+      
+      npvgrd = npvC + 1  !min(1,max(0,izcoord-1))
+      npdim = (np+nsides)*npvgrd
+        
+      ALLOCATE ( xp(np), yp(np), zp(np), nen(ne,ncn), &
+          sxy(2,nsides),sbot(nsides),sdx(nsides),sdy(nsides),Rn0(npvgrd,nsides), &
+          numsideT(ncn,ne),iside(2,nsides),area(ne),IECode(ne),iends(2,nsides), &
+          uc(npvgrd,np),vc(npvgrd,np),zdep(npvgrd),rhv(nsides),gamma(nsides),sdep(nsides), &
+          uct(npdim),vct(npdim),xpt(npdim),ypt(npdim),zpt(npdim), &
+          eta(ne),un(npvgrd,nsides),ut(npvgrd,nsides),wz(npvc,ne), eqtide(ne), STAT = istat )
+      if(istat.ne.0) then
+        write(*,*) 'FATAL ERROR: Cannot allocate ncon main storage arrays',istat
+        stop
+      endif
+        
+      if(izcoord.eq.10) then
+        ALLOCATE ( etaMB(ne), STAT = istat )
+        if(istat.ne.0) then
+          write(*,*) 'FATAL ERROR: Cannot allocate etaMB array',istat
+          stop
+        endif
+      endif
+        
+      if(nson.ne.0) then
+        ALLOCATE ( qp(npv,ne), STAT = istat )
+        if(istat.ne.0) then
+          write(*,*) 'FATAL ERROR: Cannot allocate qp array',istat
+          stop
+        endif
+      endif
+
+      if(nsol.gt.0) then
+        ALLOCATE ( sigt(npvc,ne), STAT = istat )
+        if(istat.ne.0) then
+          write(*,*) 'FATAL ERROR: Cannot allocate sigt array',istat
+          stop
+        endif
+        if(iOPsol.eq.1) then
+          ALLOCATE ( PSU(npvc,ne), STAT = istat )
+          if(istat.ne.0) then
+            write(*,*) 'FATAL ERROR: Cannot allocate PSU array',istat
+            stop
+          endif
+        elseif(iOPsol.eq.2) then
+          ALLOCATE ( TC(npvc,ne), STAT = istat )
+          if(istat.ne.0) then
+            write(*,*) 'FATAL ERROR: Cannot allocate TC array',istat
+            stop
+          endif
+          read(20) (TC(1,j),j=1,ne)
+        elseif(iOPsol.eq.3) then
+          ALLOCATE ( PSU(npvc,ne),TC(npvc,ne), STAT = istat )
+          if(istat.ne.0) then
+            write(*,*) 'FATAL ERROR: Cannot allocate PSU,TC arrays',istat
+            stop
+          endif
+        endif
+      endif
+      
+! *** read coordinates
+      read(20) (xp(j),j=1,np)
+      read(20) (yp(j),j=1,np)
+      read(20) (zp(j),j=1,np)
+    
+      if(npv.gt.1) then
+        read(20) (zdep(k),k=1,npvgrd)    !write  z-grid (m)
+      endif
+
+! *** read element list
+      read(20) ((nen(j,k),k=1,ncn),j=1,ne),(area(j),j=1,ne),(IECode(j),j=1,ne)
+      read(20) (sdx(j),j=1,nsides),(sdy(j),j=1,nsides), &
+               ((sxy(i,j),i=1,2),j=1,nsides),(sbot(j),j=1,nsides)
+      read(20) ((numsideT(i,j),i=1,ncn),j=1,ne),((iside(i,j),i=1,2),j=1,nsides)
+      read(20) ((iends(i,j),i=1,2),j=1,nsides)
+      
+! *** initialize
+      tet0 = -1.D0
+      un = 0.D0
+      ut = 0.D0
+      wz = 0.D0
+      
+      do
+        read(20, IOSTAT=istat) TET 
+        if(istat.gt.0) then
+          write(*,*) 'READ ERROR =',istat,'exiting...'
+          exit
+        elseif(istat.lt.0) then
+          write(*,*) 'END OF FILE - no max min data to process'
+          exit
+        elseif(tet.lt.tet0) then  !go to writing max/min file
+          exit
+        endif
+        tet0 = tet
+        
+        read(20, IOSTAT=istat) (eta(j),j=1,ne)
+! *** read velocity (un,ut)
+        if(istat.eq.0) read(20, IOSTAT=istat) ((un(k,i),k=1,npv),i=1,nsides)
+        if(istat.eq.0) read(20, IOSTAT=istat) ((ut(k,i),k=1,npv),i=1,nsides)    
+        if(istat.eq.0.and.(npv.gt.1.or.nson.gt.0)) read(20, IOSTAT=istat) ((wz(k,i),k=1,npvc),i=1,ne)
+
+! *** read bottom location if moving bottom
+        if(neMB.gt.0.and.noptcount.gt.0) then
+          read(20) (zp(j),j=1,np)
+        endif
+  
+! *** read etaMB, uMB if dynamic landslide
+        if(izcoord.eq.10) then
+          read(20) (etaMB(j),j=1,ne)
+          read(20) (un(2,j),j=1,nsides)    !write  unMB (m/s)
+          read(20) (ut(2,j),j=1,nsides)    !write  utMB (m/s)
+        endif
+
+        if(nson.gt.0.and.istat.eq.0) then
+          read(20, IOSTAT=istat) ((qp(k,j),k=1,npv),j=1,ne)
+        endif
+
+        if(nsed.gt.0.and.istat.eq.0) then
+          read(20, IOSTAT=istat) ((cc(k,j),k=1,npvc+1),j=1,ne)
+        endif
+
+        if(nsol.gt.0.and.istat.eq.0) then
+          read(20, IOSTAT=istat) ((sigt(k,j),k=1,npvc),j=1,ne)
+          if(iOPsol.eq.1) then
+            read(20) ((PSU(k,j),k=1,npvc),j=1,ne)
+          elseif(iOPsol.eq.2) then
+            read(20) ((TC(k,j),k=1,npvc),j=1,ne)
+          elseif(iOPsol.eq.3) then
+            read(20) ((PSU(k,j),k=1,npvc),j=1,ne)
+            read(20) ((TC(k,j),k=1,npvc),j=1,ne)
+          endif
+        endif
+
+        if(neqtide.gt.0.and.istat.eq.0) then  ! equilibrium tide results
+          read(20, IOSTAT=istat) (eqtide(j),j=1,ne)
+        endif
+
+        if(istat.ne.0) then
+          write(*,*) ' Error reading input file at time=', TET
+          exit
+        endif
+      
+! *** write netCDF file
+        if(noptcount.eq.0) write(*,*) ' call ncout, nopt=',nopt
+        call WritenetCDFData(fname,Quit)
+
+        noptcount = noptcount + 1
+
+      enddo
+      
+! *** write maxmin results
+      if(istat.eq.0) then
+        ALLOCATE ( emax(ne),emin(ne),umax(nsides),vmax(nsides),t1(ne),twet(ne), STAT = istat )
+        if(istat.ne.0) then
+          write(*,*) 'FATAL ERROR: Cannot allocate max arrays',istat
+          stop
+        endif
+
+        read(20, IOSTAT=istat) (emax(j),j=1,ne),(emin(j),j=1,ne)
+        read(20, IOSTAT=istat) (umax(j),j=1,nsides),(vmax(j),j=1,nsides)
+        read(20, IOSTAT=istat) (t1(j),j=1,ne),(twet(j),j=1,ne)
+        if(istat.ne.0) then
+          write(*,*) ' Error reading input max file at time=', TET
+          stop
+        endif
+
+! *** write netCDF file
+        OutMaxFile = trim(fnamedata)//'.max.dat'
+        noptcount = 0
+        nopt = 4
+        write(*,*) ' call ncout, nopt=',nopt
+        call WritenetCDFData(fname,Quit)
+       
+      endif
+
+! *** clean up
+      close(20)
 
       stop
       end
@@ -12,7 +280,7 @@
  
       subroutine WritenetCDFData(fname,Quit)
  
-      use MainArrays
+      use RCMArrays
       USE UGrid_netCDFio
      
       implicit none
@@ -33,45 +301,7 @@
       quit = .false.
       err = .false.
       
-      write(*,*) 'called WritenetCDFData(nunit,Quit)'//fname
-!      call PigMessageOK( 'netCDF not enabled. Recomplie program.','ReadGrid' )
-!      Quit = .true.
-      
-! *** set up index array for deleted nodes
-
-      ncount = 0
-      dcount = 0
-      do j=1,itot
-        if(code(j).lt.0) then
-          nindex(j) = 0
-          dcount = dcount + 1
-        else
-          ncount = ncount+1
-          nindex(j) = ncount
-          if(ncount.lt.j) then
-            dxray(ncount) = dxray(j)
-            dyray(ncount) = dyray(j)
-            depth(ncount) = depth(j)
-            code(ncount) = code(j)
-          endif
-        endif
-      enddo
-
-      itot = ncount
-      np = itot
-      ne = TotTr
-      ncn = 3
-      do j=1,TotTr
-        do k=1,3
-          ListTr(k,j) = nindex(ListTr(k,j))
-          nen(k,j) = ListTr(k,j)
-        enddo
-        if(ListTr(4,j).gt.0) then
-          ncn = 4
-          ListTr(4,j) = nindex(ListTr(4,j))
-        endif
-      enddo
-      ixy = igridtype
+      ixy = ixycoord
       if(scaleY.lt.0.) then
         iz = 0
       else
@@ -87,9 +317,9 @@
       endif
 
       if(ncn.eq.3) then
-        call Write_Grid_netCDF (np,ne,ncn,x0,y0,dxray,dyray,depth,code,Tcode,nen,err)
+        call Write_Grid_netCDF (np,ne,ncn,x0,y0,xp,yp,zp,code,IEcode,nen,err)
       elseif(ncn.eq.4) then
-        call Write_Grid_netCDF (np,ne,ncn,x0,y0,dxray,dyray,depth,code,Tcode,ListTr,err)
+        call Write_Grid_netCDF (np,ne,ncn,x0,y0,zp,yp,zp,code,IEcode,nen,err)
       endif
       if(err) then
         quit = .true.
