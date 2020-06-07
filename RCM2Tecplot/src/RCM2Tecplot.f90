@@ -10,7 +10,7 @@
       integer :: noptcount=0, nopt=2, outfileopt=0
       integer :: izcoord=2,izgrid=0,ixycoord
       integer :: jUprofile=0,jCprofile=0, jSprofile=0
-      integer, allocatable :: nen(:,:),numsideT(:,:),iside(:,:),IECode(:)
+      integer, allocatable :: nen(:,:),numsideT(:,:),iside(:,:),IECode(:),nev(:)
       integer, allocatable :: iends(:,:)
       integer, allocatable :: tsUnodes(:),tsSnodes(:),tsCnodes(:)
       real*8 ::  TET,tet0
@@ -138,7 +138,7 @@
       npvgrd = npvC + 1  !min(1,max(0,izcoord-1))
       npdim = (np+nsides)*npvgrd
         
-      ALLOCATE ( xp(np), yp(np), zp(np), nen(ne,ncn), &
+      ALLOCATE ( xp(np), yp(np), zp(np), nen(ne,ncn), nev(ne), &
           sxy(2,nsides),sbot(nsides),sdx(nsides),sdy(nsides),Rn0(npvgrd,nsides), &
           numsideT(ncn,ne),iside(2,nsides),area(ne),IECode(ne),iends(2,nsides), &
           uc(npvgrd,np),vc(npvgrd,np),zdep(npvgrd),rhv(nsides),gamma(nsides),sdep(nsides), &
@@ -361,14 +361,15 @@
       integer, parameter :: ndf0=0
       integer :: n23, npv0, MBout
       integer, save :: npvb=-1
-      integer :: i,j,js,k,kv,nn,ncn2,nentmp,mr,npvm,nps,nen1(4,1),nen3(8,1)
+      integer :: i,j,js,k,kv,nn,ncn2,nentmp,mr,npvm,nps,nen1(4),nen3(8)
       integer, save :: ffmt=0, ftype=0, idbg=1, isdbl=1, i0=0, i1=1,i8=8
       integer :: ZoneType, PVLst(10), VarLoc(10), ShVar(10),ShCon,nptot,netot
       real*8 :: cdep, zz(100),topomin,deptest,zero,zncn
-      real*8 :: uu,vv
+      real*8 :: uu,vv,ovec(ne*npvC)
       real*8 :: bigrI,bigrcI
       character(10) cseq
       character(80) :: vars
+      logical :: ezmask(npvC,ne)
 
 ! *** Tecplot output- a single Tecplot file with many frames
 
@@ -541,13 +542,13 @@
           if(noptcount.eq.0) then  ! write the elements
             do j=1,ne
               do k=1,ncn
-                nen1(k,1) = nen(j,k)
+                nen1(k) = nen(j,k)
               enddo
-              if(NEN1(ncn,1).eq.0) then
-                NEN1(ncn,1) = NEN1(ncn-1,1)
+              if(NEN1(ncn).eq.0) then
+                NEN1(ncn) = NEN1(ncn-1)
               endif
 !              write(*,*) j,i
-              write(22,*) (NEN1(k,1),k=1,ncn)
+              write(22,*) (NEN1(k),k=1,ncn)
             enddo
           endif
         
@@ -558,6 +559,30 @@
           if(npvb.lt.0) npvb = max(npv,min(2,2*max(0,izcoord-9)))
           Rn0(:,1:nsides) = un(:,1:nsides)
           call  GlobalQInterp ()
+
+          ezmask = .true.
+          if(izcoord.eq.0.or.izcoord.eq.2) then  !sigma
+            netot = ne*npvc
+            nev = npvC
+          elseif(izcoord.eq.1.or.izcoord.eq.3) then  ! hybrid, sigma on z
+            do j=1,ne
+              nev(j) = izgrid-1
+              do k=izgrid,npvC ! use model criterion for valid element
+                cdep = max(zp(nen(j,1)),zp(nen(j,2)),zp(nen(j,3)),zp(nen(j,ncn)) )
+                if(cdep.lt.zdep(k)) then
+                  nev(j) = nev(j) + 1
+                else
+                  ezmask(k:npvC,j) = .false.
+                  exit
+                endif
+              enddo
+            enddo
+!            nev = npvC
+            netot = sum(nev)
+          else
+            write(*,*) '  Unknown vertical grid type = ',izcoord
+            stop
+          endif
 
           if (noptcount.eq.0) then
 ! *** first time through start new file
@@ -604,7 +629,7 @@
             write(22,*)'VARIABLES='//trim(vars)
       
             if(npv.gt.1) then
-              write(22,"('ZONE N=',i7,' E=',i7 )" ) (np+nsides)*(npvC+1),ne*(npvC)
+              write(22,"('ZONE N=',i7,' E=',i7 )" ) (np+nsides)*(npvC+1),netot
             else
               write(22,"('ZONE N=',i7,' E=',i7 )" ) (np+nsides)*2, ne
             endif
@@ -730,47 +755,47 @@
 
 ! *** write w
           if(npv.gt.1) then
-            write(22,'(6(1x,e14.6))') ((wz(k,j),k=1,npvC),j=1,ne)
+            write(22,'(6(1x,e14.6))') ((wz(k,j),k=1,nev(j)),j=1,ne)
           endif
 
 ! *** write scalar variables
           npvm = max(1,npvC)
           if(nson.gt.0) then
-            write(22,'(6(1x,e14.6))') ((qp(k,j),k=1,npvm),j=1,ne)
+            write(22,'(6(1x,e14.6))') ((qp(k,j),k=1,nev(j)),j=1,ne)
           elseif(nsed.gt.0) then
-            write(22,'(6(1x,e14.6))') ((cc(k,j),k=1,npvm+1),j=1,ne)
+            write(22,'(6(1x,e14.6))') ((cc(k,j),k=1,nev(j)),j=1,ne)
           elseif(nsol.ne.0) then
             if(iOPsol.eq.0) then
-              write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,nev(j)),j=1,ne)
             elseif(iOPsol.eq.1) then
-              write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
-              write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,npvm),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,nev(j)),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,nev(j)),j=1,ne)
             elseif(iOPsol.eq.2) then
-              write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
-              write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,npvm),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,nev(j)),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,nev(j)),j=1,ne)
             elseif(iOPsol.eq.3) then
-              write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,npvm),j=1,ne)
-              write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,npvm),j=1,ne)
-              write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,npvm),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((sigt(k,j),k=1,nev(j)),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((PSU(k,j),k=1,nev(j)),j=1,ne)
+              write(22,'(6(1x,e14.6))') ((TC(k,j),k=1,nev(j)),j=1,ne)
             endif
           endif
           
           if(noptcount.eq.0) then  ! write the elements
             nps = np + nsides
             do j=1,ne
+              nen1(4) = 0
               do k=1,ncn
-                nen1(k,1) = nen(j,k)
+                nen1(k) = nen(j,k)
               enddo
-              if(NEN1(ncn,1).eq.0) then
-                NEN1(ncn,1) = NEN1(ncn-1,1)
+              if(NEN1(4).eq.0) then
+                NEN1(4) = NEN1(3)
               endif
-              NENtmp = NEN1(ncn,1)
-              do kv=1,npvC
+              do kv=1,nev(j)
                 do k=1,4
-                  nen3(k,1) = NEN1(k,1)+kv*nps
-                  nen3(k+4,1) = NEN1(k,1)+(kv-1)*nps
+                  nen3(k) = NEN1(k)+kv*nps
+                  nen3(k+4) = NEN1(k)+(kv-1)*nps
                 enddo
-               write(22,'(8(1x,I8))') (NEN3(k,1),k=1,8)
+               write(22,'(8(1x,I8))') (NEN3(k),k=1,8)
               enddo
             enddo
           endif
@@ -845,13 +870,13 @@
 
             do j=1,ne
               do k=1,ncn
-                nen1(k,1) = nen(j,k)
+                nen1(k) = nen(j,k)
               enddo
-              if(NEN1(ncn,1).eq.0) then
-                NEN1(ncn,1) = NEN1(ncn-1,1)
+              if(NEN1(ncn).eq.0) then
+                NEN1(ncn) = NEN1(ncn-1)
               endif
 !              write(*,*) j,i
-              write(22,*) (NEN1(k,1),k=1,ncn)
+              write(22,*) (NEN1(k),k=1,ncn)
             enddo
           
           endif
@@ -1081,14 +1106,15 @@
       integer, parameter :: ndf0=0
       integer :: n23, npv0, MBout
       integer, save :: npvb=-1
-      integer :: i,j,js,k,kv,nn,ncn2,nentmp,mr,npvm,nps,nen1(4,1),nen3(8,1)
+      integer :: i,j,js,k,kv,nn,ncn2,nentmp,mr,npvm,nps,nen1(4),nen3(8)
       integer, save :: ffmt=0, ftype=0, idbg=1, isdbl=1, i0=0, i1=1,i8=8
       integer :: ZoneType, PVLst(10), VarLoc(10), ShVar(10),ShCon,nptot,netot
       real*8 :: cdep, zz(100),topomin,deptest,zero,zncn
-      real*8 :: uu,vv
+      real*8 :: uu,vv,ovec(ne*npvC)
       real*8 :: bigrI,bigrcI
       character(10) cseq
       character(80) :: vars
+      logical :: ezmask(npvC,ne)
 
 ! *** Tecplot output- a single Tecplot file with many frames
 
@@ -1260,10 +1286,10 @@
 
             do j=1,ne
               do k=1,ncn
-                nen1(k,1) = nen(j,k)
+                nen1(k) = nen(j,k)
               enddo
-              if(NEN1(ncn,1).eq.0) then
-                NEN1(ncn,1) = NEN1(ncn-1,1)
+              if(NEN1(ncn).eq.0) then
+                NEN1(ncn) = NEN1(ncn-1)
               endif
 !              write(*,*) j,i
               i = TECNODE142(ncn,nen1)
@@ -1278,6 +1304,30 @@
           if(npvb.lt.0) npvb = max(npv,min(2,2*max(0,izcoord-9)))
           Rn0(:,1:nsides) = un(:,1:nsides)
           call  GlobalQInterp ()
+
+          ezmask = .true.
+          if(izcoord.eq.0.or.izcoord.eq.2) then  !sigma
+            netot = ne*npvc
+            nev = npvC
+          elseif(izcoord.eq.1.or.izcoord.eq.3) then  ! hybrid, sigma on z
+            do j=1,ne
+              nev(j) = izgrid-1
+              do k=izgrid,npvC ! use model criterion for valid element
+                cdep = max(zp(nen(j,1)),zp(nen(j,2)),zp(nen(j,3)),zp(nen(j,ncn)) )
+                if(cdep.lt.zdep(k)) then
+                  nev(j) = nev(j) + 1
+                else
+                  ezmask(k:npvC,j) = .false.
+                  exit
+                endif
+              enddo
+            enddo
+!            nev = npvC
+            netot = sum(nev)
+          else
+            write(*,*) '  Unknown vertical grid type = ',izcoord
+            stop
+          endif
 
           if (noptcount.eq.0) then
 ! *** first time through start new file
@@ -1333,7 +1383,7 @@
             ShVar = 0
             ShCon = 0
             nptot = (np+nsides)*(npvC+1)
-            netot = ne*npvc
+!            netot = ne*npvc
               
             i = TECZNE142('ZONE'//char(0),ZoneType,nptot,netot,i0,i0,i0,i0,&
                           tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
@@ -1365,7 +1415,7 @@
             ShVar(2) = 1
             ShCon = 1
             nptot = (np+nsides)*(npvC+1)
-            netot = ne*npvc
+!            netot = ne*npvc
               
             i = TECZNE142('ZONE'//char(0),ZoneType,nptot,netot,i0,i0,i0,i0,&
                             tet,i1,i0,i1,i0,i0,i0,i0,i0,PVLst,VarLoc,ShVar,ShCon)
@@ -1395,32 +1445,39 @@
 ! *** write z
 
           nps = np + nsides
-          if(izcoord.eq.0.or.izcoord.eq.2) then
+          if(izcoord.eq.0.or.izcoord.eq.2) then  !sigma
             do k=1,npvc+1
               do j=1,np
-                zpt((k-1)*nps+j) = -zp(j)*zdep(k)
+                zpt((k-1)*nps+j) = rhv(j)*(1.D0+zdep(k)) - zp(j)*zdep(k)
               enddo
               do j=1,nsides
-                zpt(np+(k-1)*nps+j) = -sbot(j)*zdep(k)
+                zpt(np+(k-1)*nps+j) = 0.5D0*(zpt((k-1)*nps+iends(1,j))+zpt((k-1)*nps+iends(2,j))) !edges
               enddo
             enddo
             i = TECDATD142(nptot,zpt)
             
-          elseif(izcoord.eq.1.or.izcoord.eq.3) then
+          elseif(izcoord.eq.1.or.izcoord.eq.3) then  ! hybrid, sigma on z
             do k=1,izgrid-1
               do j=1,np
-                zpt((k-1)*nps+j) = -max(zp(j),zdep(izgrid))*zdep(k)
+                zpt((k-1)*nps+j) = rhv(j)*(1.D0+zdep(k)) - max(zp(j),zdep(izgrid))*zdep(k)
               enddo
               do j=1,nsides
-                zpt(np+(k-1)*nps+j) = -max(sbot(j),zdep(izgrid))*zdep(k)
+               zpt(np+(k-1)*nps+j) = 0.5D0*(zpt((k-1)*nps+iends(1,j))+zpt((k-1)*nps+iends(2,j))) !edges 
               enddo
             enddo
-            do k=izgrid,npvc+1
+            k=izgrid
               do j=1,np
                 zpt((k-1)*nps+j) = max(zp(j),zdep(k))
               enddo
               do j=1,nsides
-                zpt(np+(k-1)*nps+j) = max(sbot(j),zdep(k))
+                zpt(np+(k-1)*nps+j) = max(0.5D0*(zp(iends(1,j))+zp(iends(2,j))),zdep(k))
+              enddo
+            do k=izgrid+1,npvc+1
+              do j=1,np
+                zpt((k-1)*nps+j) = zdep(k)
+              enddo
+              do j=1,nsides
+                zpt(np+(k-1)*nps+j) = zdep(k)
               enddo
             enddo
             i = TECDATD142(nptot,zpt)
@@ -1445,48 +1502,59 @@
 
 ! *** write w
           if(npv.gt.1) then
-           i = TECDATD142(netot,wz)
+            ovec = pack(wz,ezmask,ovec)
+            i = TECDATD142(netot,ovec)
           endif
 
 ! *** write scalar variables
-          npvm = max(1,npvC)
+
           if(nson.gt.0) then
-            i = TECDATD142(netot,qp)
+            ovec = pack(qp,ezmask,ovec)
+            i = TECDATD142(netot,ovec)
           elseif(nsed.gt.0) then
-            i = TECDATD142(netot,cc)
+            ovec = pack(cc,ezmask,ovec)
+            i = TECDATD142(netot,ovec)
           elseif(nsol.ne.0) then
             if(iOPsol.eq.0) then
-              i = TECDATD142(netot,sigt)
+              ovec = pack(sigt,ezmask,ovec)
+              i = TECDATD142(netot,ovec)
             elseif(iOPsol.eq.1) then
-              i = TECDATD142(netot,sigt)
-              i = TECDATD142(netot,PSU)
+              ovec = pack(sigt,ezmask,ovec)
+              i = TECDATD142(netot,ovec)
+              ovec = pack(PSU,ezmask,ovec)
+              i = TECDATD142(netot,ovec)
             elseif(iOPsol.eq.2) then
-              i = TECDATD142(netot,sigt)
-              i = TECDATD142(netot,TC)
+              ovec = pack(sigt,ezmask,ovec)
+              i = TECDATD142(netot,ovec)
+              ovec = pack(TC,ezmask,ovec)
+              i = TECDATD142(netot,ovec)
             elseif(iOPsol.eq.3) then
-              i = TECDATD142(netot,sigt)
-              i = TECDATD142(netot,PSU)
-              i = TECDATD142(netot,TC)
+              ovec = pack(sigt,ezmask,ovec)
+              i = TECDATD142(netot,ovec)
+              ovec = pack(PSU,ezmask,ovec)
+              i = TECDATD142(netot,ovec)
+              ovec = pack(TC,ezmask,ovec)
+              i = TECDATD142(netot,ovec)
             endif
           endif
 
           if(noptcount.eq.0) then ! write the elements
-              nps = np + nsides
-              do j=1,ne
-                do k=1,ncn
-                  nen1(k,1) = nen(j,k)
+            nps = np + nsides
+            do j=1,ne
+              nen1(4) = 0
+              do k=1,ncn
+                nen1(k) = nen(j,k)
+              enddo
+              if(NEN1(4).eq.0) then
+                NEN1(4) = NEN1(3)
+              endif
+              do kv=1,nev(j)  !npvC
+                do k=1,4
+                  nen3(k) = NEN1(k)+kv*nps
+                  nen3(k+4) = NEN1(k)+(kv-1)*nps
                 enddo
-                if(NEN1(ncn,1).eq.0) then
-                  NEN1(ncn,1) = NEN1(ncn-1,1)
-                endif
-                NENtmp = NEN1(ncn,1)
-                do kv=1,npvC
-                  do k=1,4
-                    nen3(k,1) = NEN1(k,1)+kv*nps
-                    nen3(k+4,1) = NEN1(k,1)+(kv-1)*nps
-                  enddo
-                  i = TECNODE142(i8,nen3)
-                enddo
+                i = TECNODE142(i8,nen3)
+              enddo
             enddo
           endif
         
@@ -1565,10 +1633,10 @@
 
             do j=1,ne
               do k=1,ncn
-                nen1(k,1) = nen(j,k)
+                nen1(k) = nen(j,k)
               enddo
-              if(NEN1(ncn,1).eq.0) then
-                NEN1(ncn,1) = NEN1(ncn-1,1)
+              if(NEN1(ncn).eq.0) then
+                NEN1(ncn) = NEN1(ncn-1)
               endif
 !              write(*,*) j,i
               i = TECNODE142(ncn,nen1)
